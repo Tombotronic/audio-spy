@@ -75,6 +75,7 @@ static void captureTask(void*) {
             continue;
         }
 
+        time_t chunkStart = time(nullptr);
         double secondSquares[CHUNK_SECONDS] = {0};
         float loudestSecond = 0.0f;  // of the seconds completed so far
         size_t recorded = 0;
@@ -107,6 +108,7 @@ static void captureTask(void*) {
 
         FilledChunk chunk;
         chunk.slotIndex = slotIndex;
+        chunk.startTime = chunkStart;
         chunk.rms = 0.0f;
         for (int sec = 0; sec < CHUNK_SECONDS; sec++) {
             chunk.secondRms[sec] = (float)(sqrt(secondSquares[sec] / CHUNK_SAMPLE_RATE) / 32768.0);

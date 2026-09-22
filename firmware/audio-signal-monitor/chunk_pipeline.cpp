@@ -54,6 +54,7 @@ static constexpr int WINDOW_S = 3 * CHUNK_SECONDS;
 struct PendingChunk {
     bool valid = false;
     uint8_t slotIndex = 0;
+    time_t startTime = 0;
     bool loud[CHUNK_SECONDS] = {};
 };
 
@@ -91,9 +92,11 @@ static void decideSeconds(const bool* prev, const bool* cur, const bool* next, b
     }
 }
 
-static void startRun() {
+// Named after when its first kept sample was recorded, not when it's written
+// (that's a chunk or more later).
+static void startRun(time_t audioStart) {
     storageEnforceRollingLimit();
-    String runName = netTimestampFilename("wav");
+    String runName = netTimestampFilename("wav", audioStart);
     s_runActive = s_writer.beginRun(String(RECORDINGS_DIR) + "/" + runName);
     if (s_runActive) setCurrentFile(runName);
 }
@@ -108,7 +111,8 @@ static void endRun() {
 // Copies the kept seconds of a chunk's temp file into the current run
 // (starting/ending runs at kept/dropped boundaries), then drops the temp
 // file and frees the slot for the capture task to reuse.
-static void applyChunk(uint8_t slotIndex, const bool* keep) {
+static void applyChunk(const PendingChunk& chunk, const bool* keep) {
+    uint8_t slotIndex = chunk.slotIndex;
     char mask[CHUNK_SECONDS + 1];
     for (int s = 0; s < CHUNK_SECONDS; s++) mask[s] = keep[s] ? '#' : '.';
     mask[CHUNK_SECONDS] = '\0';
@@ -125,7 +129,7 @@ static void applyChunk(uint8_t slotIndex, const bool* keep) {
         }
         int e = s;
         while (e < CHUNK_SECONDS && keep[e]) e++;
-        if (!s_runActive) startRun();
+        if (!s_runActive) startRun(chunk.startTime + s);
         if (s_runActive) {
             if (!src) src = SD.open(path, FILE_READ);
             if (src) {
@@ -149,7 +153,7 @@ static void flushOnPause() {
         static const bool none[CHUNK_SECONDS] = {};
         bool keep[CHUNK_SECONDS];
         decideSeconds(s_prevLoud, s_pending.loud, none, keep);
-        applyChunk(s_pending.slotIndex, keep);
+        applyChunk(s_pending, keep);
         s_pending.valid = false;
     }
     endRun();
@@ -187,6 +191,7 @@ static void pipelineTask(void*) {
         PendingChunk current;
         current.valid = true;
         current.slotIndex = chunk.slotIndex;
+        current.startTime = chunk.startTime;
         for (int s = 0; s < CHUNK_SECONDS; s++) {
             current.loud[s] = force || chunk.secondRms[s] >= threshold;
         }
@@ -194,7 +199,7 @@ static void pipelineTask(void*) {
         if (s_pending.valid) {
             bool keep[CHUNK_SECONDS];
             decideSeconds(s_prevLoud, s_pending.loud, current.loud, keep);
-            applyChunk(s_pending.slotIndex, keep);
+            applyChunk(s_pending, keep);
             memcpy(s_prevLoud, s_pending.loud, sizeof(s_prevLoud));
         }
         s_pending = current;

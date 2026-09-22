@@ -37,6 +37,7 @@ struct FilledChunk {
     uint8_t slotIndex;
     float secondRms[CHUNK_SECONDS];  // per-second RMS, normalized 0.0-1.0
     float rms;                       // loudest of secondRms
+    time_t startTime;                // wall clock at the chunk's first sample
 };
 
 // Items are FilledChunk structs.

@@ -76,9 +76,12 @@ String netLocalIp() {
     return String(g_state.ipAddress);
 }
 
-String netTimestampFilename(const char* extension) {
+String netTimestampFilename(const char* extension, time_t when) {
+    if (when == 0) time(&when);
     struct tm timeinfo;
-    if (getLocalTime(&timeinfo, 0)) {
+    localtime_r(&when, &timeinfo);
+    // before NTP sync the clock starts at 1970
+    if (timeinfo.tm_year + 1900 >= 2020) {
         char buf[32];
         strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &timeinfo);
         return String(buf) + "." + extension;
