@@ -1,6 +1,7 @@
 #include "web_server.h"
 
 #include <ArduinoJson.h>
+#include <M5Unified.h>
 #include <SD.h>
 #include <WebServer.h>
 #include <WiFi.h>
@@ -42,6 +43,8 @@ static bool isCurrentRecording(const String& name) {
 
 static void handleIndex() {
     if (!requireAuth()) return;
+    // Revalidate every load, so a flash shows up without a hard refresh.
+    server.sendHeader("Cache-Control", "no-cache");
     server.send_P(200, "text/html", WEB_INDEX_HTML);
 }
 
@@ -227,6 +230,7 @@ static void handleStatus() {
         doc["timeSynced"] = g_state.timeSynced;
         doc["uptimeS"] = millis() / 1000;
     }
+    doc["battery"] = M5.Power.getBatteryLevel();  // 0-100, -1 if unknown
 
     String out;
     serializeJson(doc, out);

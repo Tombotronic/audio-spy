@@ -11,7 +11,7 @@
 //   GET  /peaks?name=X&n=N    coarse waveform: N peak values (JSON array)
 //   POST /delete?name=X       delete a recording
 //   POST /deleteall           delete all recordings except the open one
-//   GET  /status              JSON: recording/paused/levels/threshold/stealth/bypass/space/ip/uptime
+//   GET  /status              JSON: recording/paused/levels/threshold/stealth/bypass/space/ip/uptime/battery
 //   POST /threshold  value=F  set + persist RMS threshold (0..1)
 //   POST /stealth    on=0|1   set + persist stealth mode
 //   POST /pause               pause the record-analyze-decide loop

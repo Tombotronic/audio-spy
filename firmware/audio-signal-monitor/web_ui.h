@@ -89,6 +89,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   #state.st-rec { color: var(--rec); }
   #state.st-paused { color: var(--accent); }
   #thresholdVal { color: var(--accent); margin-left: 4px; }
+  #battery { justify-self: end; font-variant-numeric: tabular-nums; }
   /* State left, threshold centred on the page (equal side columns). */
   .status-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 10px 0; }
   /* Level bar, threshold slider and dB scale share one horizontal geometry
@@ -170,7 +171,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="status-row">
     <strong id="state">-</strong>
     <span>Threshold <strong id="thresholdVal"></strong></span>
-    <span></span>
+    <span id="battery" class="muted" title="Battery"></span>
   </div>
 
   <div class="meter">
@@ -303,6 +304,7 @@ async function refreshStatus() {
   document.getElementById('ip').textContent = s.ip || '';
   document.getElementById('ssid').textContent = s.ssid || '';
   showStorage(s.freeBytes, s.totalBytes);
+  document.getElementById('battery').textContent = s.battery >= 0 ? '🔋 ' + s.battery + '%' : '';
   if (showServerValue) {
     slider.value = Math.round(rmsToDb(s.threshold));
     document.getElementById('thresholdVal').textContent = slider.value + ' dB';
