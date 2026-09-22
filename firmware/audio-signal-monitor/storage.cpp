@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <vector>
 
-static constexpr size_t WAV_HEADER_BYTES = 44;
-
 bool storageInit() {
     SPI.begin(SD_SPI_SCK_PIN, SD_SPI_MISO_PIN, SD_SPI_MOSI_PIN, SD_SPI_CS_PIN);
 
@@ -61,28 +59,6 @@ static std::vector<String> listRecordingsOldestFirst() {
 
     std::sort(names.begin(), names.end());
     return names;
-}
-
-void storageRemoveEmptyRecordings() {
-    std::vector<String> empty;
-    File dir = SD.open(RECORDINGS_DIR);
-    if (!dir) return;
-    File entry = dir.openNextFile();
-    while (entry) {
-        String name = entry.name();
-        if (!entry.isDirectory() && name.endsWith(".wav") && entry.size() <= WAV_HEADER_BYTES) {
-            empty.push_back(name);
-        }
-        entry.close();
-        entry = dir.openNextFile();
-    }
-    dir.close();
-
-    for (const String& name : empty) {
-        String path = String(RECORDINGS_DIR) + "/" + name;
-        Serial.printf("[storage] removing empty recording: %s\n", path.c_str());
-        SD.remove(path);
-    }
 }
 
 void storageEnforceRollingLimit() {

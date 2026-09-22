@@ -35,3 +35,9 @@ private:
 
     void writeHeader(uint32_t dataBytes);
 };
+
+// A run in progress is recorded in a marker file on the SD card (removed by
+// endRun()). Call once at boot: if the marker is still there, that run was
+// cut off by a reboot. Its header is then fixed to cover every byte that
+// reached the card, or the file is deleted if it holds no audio.
+void wavRecoverInterruptedRun();

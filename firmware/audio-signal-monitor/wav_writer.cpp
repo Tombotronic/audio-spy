@@ -2,6 +2,10 @@
 
 #include <SD.h>
 
+#include "storage.h"
+
+static const char* RUN_MARKER_PATH = RECORDINGS_DIR "/_current_run";
+
 struct WavHeader {
     char riff[4] = {'R', 'I', 'F', 'F'};
     uint32_t chunkSize = 0;
@@ -29,6 +33,12 @@ bool WavWriter::beginRun(const String& path) {
 
     WavHeader header;  // placeholder sizes, fixed up in endRun()
     _file.write((const uint8_t*)&header, sizeof(header));
+
+    File marker = SD.open(RUN_MARKER_PATH, FILE_WRITE);
+    if (marker) {
+        marker.print(path);
+        marker.close();
+    }
 
     _path = path;
     _dataBytesWritten = 0;
@@ -58,12 +68,16 @@ void WavWriter::appendFromFile(File& source, size_t byteCount) {
     }
 }
 
-void WavWriter::writeHeader(uint32_t dataBytes) {
+static void writeHeaderTo(File& file, uint32_t dataBytes) {
     WavHeader header;
     header.chunkSize = 36 + dataBytes;
     header.dataSize = dataBytes;
-    _file.seek(0);
-    _file.write((const uint8_t*)&header, sizeof(header));
+    file.seek(0);
+    file.write((const uint8_t*)&header, sizeof(header));
+}
+
+void WavWriter::writeHeader(uint32_t dataBytes) {
+    writeHeaderTo(_file, dataBytes);
 }
 
 void WavWriter::checkpoint() {
@@ -77,7 +91,34 @@ void WavWriter::endRun() {
     if (!_open) return;
     writeHeader(_dataBytesWritten);
     _file.close();
+    SD.remove(RUN_MARKER_PATH);
     Serial.printf("[wav] finalized run: %s (%lu bytes audio)\n", _path.c_str(),
                   (unsigned long)_dataBytesWritten);
     _open = false;
+}
+
+void wavRecoverInterruptedRun() {
+    File marker = SD.open(RUN_MARKER_PATH, FILE_READ);
+    if (!marker) return;
+    String path = marker.readString();
+    marker.close();
+    SD.remove(RUN_MARKER_PATH);
+    path.trim();
+    if (path.length() == 0) return;
+
+    File file = SD.open(path, "r+");
+    if (!file) return;
+    size_t size = file.size();
+    if (size <= sizeof(WavHeader)) {
+        file.close();
+        SD.remove(path);
+        Serial.printf("[wav] removed empty interrupted run: %s\n", path.c_str());
+        return;
+    }
+    // Whole 16-bit samples only; the tail of a cut-off write may be odd.
+    uint32_t dataBytes = (size - sizeof(WavHeader)) & ~(uint32_t)1;
+    writeHeaderTo(file, dataBytes);
+    file.close();
+    Serial.printf("[wav] recovered interrupted run: %s (%lu bytes audio)\n", path.c_str(),
+                  (unsigned long)dataBytes);
 }

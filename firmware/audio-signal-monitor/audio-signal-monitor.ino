@@ -7,6 +7,7 @@
 #include "net.h"
 #include "status_screen.h"
 #include "storage.h"
+#include "wav_writer.h"
 #include "web_server.h"
 
 Config g_config;
@@ -28,7 +29,7 @@ void setup() {
         while (true) delay(1000);
     }
 
-    storageRemoveEmptyRecordings();
+    wavRecoverInterruptedRun();
     g_config = configLoad();
     // Always boot with the screen on; stealth is a per-session choice.
     g_config.stealthMode = false;

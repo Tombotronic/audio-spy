@@ -183,8 +183,11 @@ function parseWav(buf) {
     if (id === 'fmt ') sampleRate = view.getUint32(off + 12, true);
     if (id === 'data') {
       const remaining = buf.byteLength - off - 8;
-      // size is a placeholder (0) while a run is still being written
-      const bytes = size > 0 && size <= remaining ? size : remaining;
+      // Use everything after the data header, not its size field: the size
+      // lags behind while a run is being written, and a run cut off by a
+      // reboot can hold more audio than its last header update says. The
+      // device's writer never appends other chunks after "data".
+      const bytes = remaining;
       return { samples: new Int16Array(buf, off + 8, Math.floor(bytes / 2)), sampleRate };
     }
     off += 8 + size + (size & 1);

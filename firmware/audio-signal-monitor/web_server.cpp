@@ -116,6 +116,7 @@ static void handleStatus() {
         doc["ip"] = g_state.ipAddress;
         doc["wifiConnected"] = g_state.wifiConnected;
         doc["timeSynced"] = g_state.timeSynced;
+        doc["uptimeS"] = millis() / 1000;
     }
 
     String out;
