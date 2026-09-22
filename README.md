@@ -42,8 +42,19 @@ silence forever). 3.2.0 is built on IDF v5.4.1, which is unaffected.
 Install with: `arduino-cli core install esp32:esp32@3.2.0`
 
 Copy `firmware/audio-signal-monitor/secrets.h.example` to `secrets.h` (gitignored)
-and fill in your WiFi credentials and time zone (`TZ_INFO`, a POSIX rule so
-daylight saving switches automatically) before flashing.
+and set your time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
+automatically) before flashing.
+
+## WiFi setup
+
+WiFi credentials are entered on the device, not compiled in. On first boot it
+scans and lists nearby networks (strongest first): press **1–6** to pick one, or
+**0** to type a hidden SSID, then type the password and press **ok**. They're
+saved in NVS flash (plaintext, never sent over the network).
+
+If connecting fails at boot (wrong password, different network), press **W**
+within 10 seconds to pick a network again; any other key or waiting it out
+boots offline and keeps recording.
 
 ## Audio format
 

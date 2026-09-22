@@ -5,14 +5,15 @@
 
 #include "app_state.h"
 #include "secrets.h"
+#include "wifi_setup.h"
 
-bool netConnectWifi(uint32_t timeoutMs) {
+static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutMs) {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(true);
     WiFi.disconnect();
     delay(100);
-    Serial.printf("[net] connecting to SSID \"%s\"\n", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    Serial.printf("[net] connecting to SSID \"%s\"\n", ssid.c_str());
+    WiFi.begin(ssid.c_str(), pass.c_str());
 
     uint32_t start = millis();
     wl_status_t lastStatus = (wl_status_t)255;
@@ -24,8 +25,29 @@ bool netConnectWifi(uint32_t timeoutMs) {
         }
         delay(250);
     }
+    return WiFi.status() == WL_CONNECTED;
+}
 
-    bool connected = WiFi.status() == WL_CONNECTED;
+bool netConnectWifi(uint32_t timeoutMs) {
+    String ssid, pass;
+    if (!wifiLoadCreds(ssid, pass)) {
+#ifdef WIFI_SSID
+        // one-time migration from the old compiled-in credentials
+        ssid = WIFI_SSID;
+        pass = WIFI_PASSWORD;
+        wifiSaveCreds(ssid, pass);
+#else
+        wifiPromptCreds(ssid, pass);
+#endif
+    }
+
+    bool connected = tryConnect(ssid, pass, timeoutMs);
+    // Wrong password or a different network: let the user fix it on the
+    // spot. No key within the timeout = boot on offline (keeps recording).
+    while (!connected && wifiAskReenter(10000)) {
+        wifiPromptCreds(ssid, pass);
+        connected = tryConnect(ssid, pass, timeoutMs);
+    }
     netRefreshState();
 
     if (connected) {
