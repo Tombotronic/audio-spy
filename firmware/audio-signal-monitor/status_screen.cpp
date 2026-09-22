@@ -70,7 +70,7 @@ void statusScreenUpdate() {
         paused = g_state.paused;
         isRecording = g_state.isRecording;
         levelRms = g_state.levelRms;
-        chunkRms = g_state.chunkSoFarRms;
+        chunkRms = g_state.chunkLoudestSecondRms;
         threshold = g_state.thresholdRms;
         freeBytes = g_state.freeBytes;
     }
@@ -144,12 +144,12 @@ void statusScreenUpdate() {
     }
     canvas.setTextDatum(top_left);
 
-    // Chunk bar: running RMS of the current 10s chunk. This is the value the
-    // keep/discard decision actually compares against the threshold.
+    // Chunk bar: loudest completed second of the current 10s chunk. Seconds
+    // at or above the threshold are what the pipeline keeps (plus padding).
     const int chunkY = 96, chunkH = 12;
     canvas.setTextColor(LIGHTGREY, BLACK);
     canvas.setCursor(x0, chunkY - 11);
-    canvas.print("chunk avg");
+    canvas.print("loudest sec");
     bool willKeep = chunkRms >= threshold;
     canvas.setTextColor(willKeep ? GREEN : DARKGREY, BLACK);
     canvas.setTextDatum(top_right);

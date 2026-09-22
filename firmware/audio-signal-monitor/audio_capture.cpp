@@ -75,7 +75,8 @@ static void captureTask(void*) {
             continue;
         }
 
-        double sumSquares = 0.0;
+        double secondSquares[CHUNK_SECONDS] = {0};
+        float loudestSecond = 0.0f;  // of the seconds completed so far
         size_t recorded = 0;
         while (recorded < CHUNK_SAMPLES) {
             size_t want = min(STREAM_BUF_SAMPLES, (size_t)(CHUNK_SAMPLES - recorded));
@@ -88,20 +89,30 @@ static void captureTask(void*) {
             for (size_t i = 0; i < want; i++) {
                 double s = streamBuf[i];
                 blockSquares += s * s;
+                secondSquares[(recorded + i) / CHUNK_SAMPLE_RATE] += s * s;
             }
-            sumSquares += blockSquares;
+            size_t secondsBefore = recorded / CHUNK_SAMPLE_RATE;
             recorded += want;
+            for (size_t sec = secondsBefore; sec < recorded / CHUNK_SAMPLE_RATE; sec++) {
+                float r = (float)(sqrt(secondSquares[sec] / CHUNK_SAMPLE_RATE) / 32768.0);
+                if (r > loudestSecond) loudestSecond = r;
+            }
             {
                 AppStateLock lock;
                 g_state.levelRms = (float)(sqrt(blockSquares / want) / 32768.0);
-                g_state.chunkSoFarRms = (float)(sqrt(sumSquares / recorded) / 32768.0);
+                g_state.chunkLoudestSecondRms = loudestSecond;
             }
         }
         tmp.close();
 
-        float rms = (float)(sqrt(sumSquares / CHUNK_SAMPLES) / 32768.0);
-        Serial.printf("[audio] chunk rms=%.5f\n", rms);
-        FilledChunk chunk{slotIndex, rms};
+        FilledChunk chunk;
+        chunk.slotIndex = slotIndex;
+        chunk.rms = 0.0f;
+        for (int sec = 0; sec < CHUNK_SECONDS; sec++) {
+            chunk.secondRms[sec] = (float)(sqrt(secondSquares[sec] / CHUNK_SAMPLE_RATE) / 32768.0);
+            if (chunk.secondRms[sec] > chunk.rms) chunk.rms = chunk.secondRms[sec];
+        }
+        Serial.printf("[audio] chunk loudest second rms=%.5f\n", chunk.rms);
         xQueueSend(s_filledQueue, &chunk, portMAX_DELAY);
     }
 }

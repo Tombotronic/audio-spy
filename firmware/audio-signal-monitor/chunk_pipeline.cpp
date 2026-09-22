@@ -40,44 +40,103 @@ static void setCurrentFile(const String& name) {
     g_state.currentFile[sizeof(g_state.currentFile) - 1] = '\0';
 }
 
-struct DecisionSlot {
+// Per-second keep decision. A second is "loud" when its RMS reaches the
+// threshold (force-keep marks a whole chunk loud). Kept: every second
+// within PRE_ROLL_S before / POST_ROLL_S after a loud second, plus silent
+// gaps of up to MERGE_GAP_S between kept seconds, so pauses in speech don't
+// split a recording into many files. Deciding the pre-roll needs the next
+// chunk, so each chunk is decided one chunk late, over a 3-chunk window.
+static constexpr int PRE_ROLL_S = 2;
+static constexpr int POST_ROLL_S = 2;
+static constexpr int MERGE_GAP_S = 5;
+static constexpr int WINDOW_S = 3 * CHUNK_SECONDS;
+
+struct PendingChunk {
     bool valid = false;
     uint8_t slotIndex = 0;
-    bool keepSelf = false;
+    bool loud[CHUNK_SECONDS] = {};
 };
 
 static WavWriter s_writer;
 static bool s_runActive = false;
-static bool s_prevPrevKeepSelf = false;
-static DecisionSlot s_pending;  // one chunk "ago", awaiting its neighbor-keep decision
+static bool s_prevLoud[CHUNK_SECONDS] = {};  // chunk before the pending one
+static PendingChunk s_pending;                // one chunk "ago", awaiting its decision
 
-// Applies the effective keep/discard decision for a chunk slot: on keep,
-// streams its temp file's bytes into the current merge run (starting one
-// if needed); on discard, just drops the temp file. Either way the slot
-// is freed for the capture task to reuse.
-static void applyDecision(uint8_t slotIndex, bool effectiveKeep) {
-    Serial.printf("[pipeline] slot=%d effectiveKeep=%d\n", slotIndex, effectiveKeep);
-    String path = audioCaptureSlotPath(slotIndex);
-    if (effectiveKeep) {
-        if (!s_runActive) {
-            storageEnforceRollingLimit();
-            String runName = netTimestampFilename("wav");
-            s_runActive = s_writer.beginRun(String(RECORDINGS_DIR) + "/" + runName);
-            if (s_runActive) setCurrentFile(runName);
-        }
-        if (s_runActive) {
-            File src = SD.open(path, FILE_READ);
-            if (src) {
-                s_writer.appendFromFile(src, CHUNK_BYTES);
-                s_writer.checkpoint();
-                src.close();
+// Fills keep[] for the middle chunk of the prev/cur/next window.
+static void decideSeconds(const bool* prev, const bool* cur, const bool* next, bool* keep) {
+    bool loud[WINDOW_S];
+    memcpy(loud, prev, CHUNK_SECONDS);
+    memcpy(loud + CHUNK_SECONDS, cur, CHUNK_SECONDS);
+    memcpy(loud + 2 * CHUNK_SECONDS, next, CHUNK_SECONDS);
+
+    bool padded[WINDOW_S];
+    for (int i = 0; i < WINDOW_S; i++) {
+        padded[i] = false;
+        for (int j = max(0, i - POST_ROLL_S); j <= min(WINDOW_S - 1, i + PRE_ROLL_S); j++) {
+            if (loud[j]) {
+                padded[i] = true;
+                break;
             }
         }
-    } else if (s_runActive) {
-        s_writer.endRun();
-        s_runActive = false;
-        setCurrentFile("");
     }
+
+    for (int s = 0; s < CHUNK_SECONDS; s++) {
+        int i = CHUNK_SECONDS + s;
+        keep[s] = padded[i];
+        if (keep[s]) continue;
+        int left = i - 1, right = i + 1;
+        while (left >= 0 && !padded[left]) left--;
+        while (right < WINDOW_S && !padded[right]) right++;
+        keep[s] = left >= 0 && right < WINDOW_S && right - left - 1 <= MERGE_GAP_S;
+    }
+}
+
+static void startRun() {
+    storageEnforceRollingLimit();
+    String runName = netTimestampFilename("wav");
+    s_runActive = s_writer.beginRun(String(RECORDINGS_DIR) + "/" + runName);
+    if (s_runActive) setCurrentFile(runName);
+}
+
+static void endRun() {
+    if (!s_runActive) return;
+    s_writer.endRun();
+    s_runActive = false;
+    setCurrentFile("");
+}
+
+// Copies the kept seconds of a chunk's temp file into the current run
+// (starting/ending runs at kept/dropped boundaries), then drops the temp
+// file and frees the slot for the capture task to reuse.
+static void applyChunk(uint8_t slotIndex, const bool* keep) {
+    char mask[CHUNK_SECONDS + 1];
+    for (int s = 0; s < CHUNK_SECONDS; s++) mask[s] = keep[s] ? '#' : '.';
+    mask[CHUNK_SECONDS] = '\0';
+    Serial.printf("[pipeline] slot=%d keep=%s\n", slotIndex, mask);
+
+    String path = audioCaptureSlotPath(slotIndex);
+    File src;
+    int s = 0;
+    while (s < CHUNK_SECONDS) {
+        if (!keep[s]) {
+            endRun();
+            s++;
+            continue;
+        }
+        int e = s;
+        while (e < CHUNK_SECONDS && keep[e]) e++;
+        if (!s_runActive) startRun();
+        if (s_runActive) {
+            if (!src) src = SD.open(path, FILE_READ);
+            if (src) {
+                src.seek(s * BYTES_PER_SECOND);
+                s_writer.appendFromFile(src, (e - s) * BYTES_PER_SECOND);
+            }
+        }
+        s = e;
+    }
+    if (s_runActive) s_writer.checkpoint();
+    if (src) src.close();
     SD.remove(path);
     audioCaptureReleaseSlot(slotIndex);
 }
@@ -87,16 +146,14 @@ static void applyDecision(uint8_t slotIndex, bool effectiveKeep) {
 // rather than leaving it dangling indefinitely.
 static void flushOnPause() {
     if (s_pending.valid) {
-        bool effectiveKeep = s_prevPrevKeepSelf || s_pending.keepSelf;
-        applyDecision(s_pending.slotIndex, effectiveKeep);
+        static const bool none[CHUNK_SECONDS] = {};
+        bool keep[CHUNK_SECONDS];
+        decideSeconds(s_prevLoud, s_pending.loud, none, keep);
+        applyChunk(s_pending.slotIndex, keep);
         s_pending.valid = false;
     }
-    if (s_runActive) {
-        s_writer.endRun();
-        s_runActive = false;
-        setCurrentFile("");
-    }
-    s_prevPrevKeepSelf = false;
+    endRun();
+    memset(s_prevLoud, 0, sizeof(s_prevLoud));
     publishLiveState(0.0f, false);
 }
 
@@ -125,17 +182,23 @@ static void pipelineTask(void*) {
             continue;
         }
 
-        bool keepSelf = (chunk.rms >= currentThreshold()) || consumeForceKeep();
-        publishLiveState(chunk.rms, s_runActive);
-
-        DecisionSlot current{true, chunk.slotIndex, keepSelf};
+        float threshold = currentThreshold();
+        bool force = consumeForceKeep();
+        PendingChunk current;
+        current.valid = true;
+        current.slotIndex = chunk.slotIndex;
+        for (int s = 0; s < CHUNK_SECONDS; s++) {
+            current.loud[s] = force || chunk.secondRms[s] >= threshold;
+        }
 
         if (s_pending.valid) {
-            bool effectiveKeep = s_prevPrevKeepSelf || s_pending.keepSelf || current.keepSelf;
-            applyDecision(s_pending.slotIndex, effectiveKeep);
-            s_prevPrevKeepSelf = s_pending.keepSelf;
+            bool keep[CHUNK_SECONDS];
+            decideSeconds(s_prevLoud, s_pending.loud, current.loud, keep);
+            applyChunk(s_pending.slotIndex, keep);
+            memcpy(s_prevLoud, s_pending.loud, sizeof(s_prevLoud));
         }
         s_pending = current;
+        publishLiveState(chunk.rms, s_runActive);
     }
 }
 

@@ -10,15 +10,15 @@
 struct AppState {
     SemaphoreHandle_t mutex = nullptr;
 
-    float thresholdRms = 0.02f;  // normalized 0.0-1.0, compared against chunk RMS
+    float thresholdRms = 0.02f;  // normalized 0.0-1.0, compared against each second's RMS
     bool stealthMode = false;
     bool paused = false;
     bool forceKeepRequested = false;
 
     bool isRecording = false;   // a merge run is currently open
-    float liveRms = 0.0f;       // most recently measured chunk RMS
+    float liveRms = 0.0f;       // loudest second of the most recent chunk
     float levelRms = 0.0f;      // RMS of the latest ~32ms mic block (fast meter)
-    float chunkSoFarRms = 0.0f; // running RMS of the chunk being recorded
+    float chunkLoudestSecondRms = 0.0f; // loudest completed second of the chunk being recorded
     uint64_t freeBytes = 0;
     uint64_t totalBytes = 0;
     char currentFile[64] = {0}; // name of the WAV being written, "" if none

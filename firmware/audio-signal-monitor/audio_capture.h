@@ -27,13 +27,16 @@ bool audioCaptureInit();
 
 // Starts the capture task pinned to core 1. It continuously records
 // CHUNK_SAMPLES-sample chunks into a temp file per chunk (pausing/idling
-// per AppState.paused), computing each chunk's RMS as it streams, then
-// pushes {slotIndex, rms} onto the filled queue.
+// per AppState.paused), computing the RMS of each second as it streams,
+// then pushes a FilledChunk onto the filled queue.
 void audioCaptureStart();
+
+#define BYTES_PER_SECOND (CHUNK_SAMPLE_RATE * sizeof(int16_t))
 
 struct FilledChunk {
     uint8_t slotIndex;
-    float rms;  // normalized 0.0-1.0
+    float secondRms[CHUNK_SECONDS];  // per-second RMS, normalized 0.0-1.0
+    float rms;                       // loudest of secondRms
 };
 
 // Items are FilledChunk structs.
