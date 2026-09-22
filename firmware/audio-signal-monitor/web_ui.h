@@ -14,54 +14,107 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Audio Signal Monitor</title>
 <style>
-  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; background: #111; color: #eee; }
-  h1 { font-size: 1.3em; }
+  /* Theme tokens: dark by default; light via the system setting unless the
+     user forced dark, or when forced light (Settings -> Appearance). */
+  :root {
+    color-scheme: dark;
+    --bg: #111; --fg: #eee; --muted: #888; --scale: #777;
+    --surface: #1b1b1b; --border: #333; --bar: #333; --track: #444;
+    --btn: #333; --btn-hover: #444; --btn-border: #555;
+    --level: #2e6b31; --level-above: #4caf50; --accent: #ffd400;
+    --ok: #4caf50; --rec: #ff4040;
+    --danger: #a33; --danger-text: #f88; --confirm-bg: #2a1414;
+    --overlay: rgba(0, 0, 0, 0.6);
+    --wave: #666; --wave-played: #4caf50; --wave-text: #555;
+  }
+  @media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+      color-scheme: light;
+      --bg: #f6f6f7; --fg: #1d1d1f; --muted: #6e6e73; --scale: #8e8e93;
+      --surface: #fff; --border: #d9d9de; --bar: #e3e3e8; --track: #c7c7cc;
+      --btn: #fff; --btn-hover: #ececf0; --btn-border: #c7c7cc;
+      --level: #a5d6a7; --level-above: #2e7d32; --accent: #d49b00;
+      --ok: #2e7d32; --rec: #d32f2f;
+      --danger: #c62828; --danger-text: #c62828; --confirm-bg: #fdecec;
+      --overlay: rgba(0, 0, 0, 0.3);
+      --wave: #b0b0b8; --wave-played: #2e7d32; --wave-text: #9a9aa0;
+    }
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f6f6f7; --fg: #1d1d1f; --muted: #6e6e73; --scale: #8e8e93;
+    --surface: #fff; --border: #d9d9de; --bar: #e3e3e8; --track: #c7c7cc;
+    --btn: #fff; --btn-hover: #ececf0; --btn-border: #c7c7cc;
+    --level: #a5d6a7; --level-above: #2e7d32; --accent: #d49b00;
+    --ok: #2e7d32; --rec: #d32f2f;
+    --danger: #c62828; --danger-text: #c62828; --confirm-bg: #fdecec;
+    --overlay: rgba(0, 0, 0, 0.3);
+    --wave: #b0b0b8; --wave-played: #2e7d32; --wave-text: #9a9aa0;
+  }
+
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 1.3em; flex: 1; margin: 0; }
   .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-  .bar { flex: 1; height: 14px; background: #333; border-radius: 5px; overflow: hidden; position: relative; }
-  .bar > #level { height: 100%; background: #2e6b31; width: 0%; transition: width 0.15s linear; }
-  .bar > #level.above { background: #4caf50; }
-  .bar > #thrMark { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffd400; }
-  button { background: #333; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-  button:hover { background: #444; }
-  button.danger { border-color: #a33; color: #f88; }
+  .bar { flex: 1; height: 14px; background: var(--bar); border-radius: 5px; overflow: hidden; position: relative; }
+  .bar > #level { height: 100%; background: var(--level); width: 0%; transition: width 0.15s linear; }
+  .bar > #level.above { background: var(--level-above); }
+  .bar > #thrMark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
+  button { background: var(--btn); color: var(--fg); border: 1px solid var(--btn-border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  button:hover { background: var(--btn-hover); }
+  button.danger { border-color: var(--danger); color: var(--danger-text); }
+  button.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  #settingsBtn { font-size: 1.2em; padding: 4px 10px; }
+  #state.st-listening { color: var(--ok); }
+  #state.st-rec { color: var(--rec); }
+  #state.st-paused { color: var(--accent); }
+  #thresholdVal { color: var(--accent); }
   /* Level bar, threshold slider and dB scale share one horizontal geometry
      (inset by the slider thumb's radius) so positions line up exactly. */
   .meter { margin: 10px 0; }
   .meter .bar, .meter .scale { margin: 0 8px; }
-  .meter .scale { position: relative; height: 14px; font-size: 0.75em; color: #777; }
+  .meter .scale { position: relative; height: 14px; font-size: 0.75em; color: var(--scale); }
   .meter .scale span { position: absolute; transform: translateX(-50%); }
   /* The native track spans the full width (the thumb needs the 8px inset on
      each side), so it's transparent; .track draws it with the bar's width. */
   .slider { position: relative; margin-top: 4px; }
-  .slider .track { position: absolute; left: 8px; right: 8px; top: 8px; height: 4px; background: #444; border-radius: 2px; }
+  .slider .track { position: absolute; left: 8px; right: 8px; top: 8px; height: 4px; background: var(--track); border-radius: 2px; }
   #threshold { position: relative; -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0; background: transparent; display: block; }
   #threshold::-webkit-slider-runnable-track { height: 4px; background: transparent; }
-  #threshold::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #ffd400; border: none; }
+  #threshold::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: var(--accent); border: none; }
   #threshold::-moz-range-track { height: 4px; background: transparent; }
-  #threshold::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #ffd400; border: none; }
-  .file { padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
+  #threshold::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--accent); border: none; }
+  .file { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.9em; }
   .file .head { display: flex; align-items: baseline; gap: 6px; }
   .file .name { flex: 1; word-break: break-all; }
   .file .player { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .file .play { width: 36px; padding: 6px 0; }
-  .file canvas { flex: 1; min-width: 0; height: 40px; background: #1b1b1b; border-radius: 4px; cursor: pointer; }
+  .file canvas { flex: 1; min-width: 0; height: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
   .file .time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
-  .muted { color: #888; font-size: 0.85em; }
+  .muted { color: var(--muted); font-size: 0.85em; }
   [hidden] { display: none !important; }
-  h1 { flex: 1; margin: 0; }
-  #settingsBtn { font-size: 1.2em; padding: 4px 10px; }
-  button:disabled { opacity: 0.4; cursor: default; }
-  button.danger.solid { background: #a33; color: #fff; border-color: #a33; }
-  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: flex-start; padding: 48px 16px; z-index: 10; }
-  .panel { background: #1b1b1b; border: 1px solid #333; border-radius: 10px; padding: 16px; width: 100%; max-width: 480px; box-sizing: border-box; }
+  .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: flex-start; padding: 48px 16px; z-index: 10; }
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; width: 100%; max-width: 480px; box-sizing: border-box; }
   .panel h2 { flex: 1; margin: 0; font-size: 1.15em; }
-  .setting { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #333; }
+  .setting { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
   .setting > div { flex: 1; }
   .setting input[type=checkbox] { width: 20px; height: 20px; }
-  .confirm { background: #2a1414; border: 1px solid #a33; border-radius: 8px; padding: 12px; }
+  .setting > .seg { flex: none; }
+  .seg { display: inline-grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--btn-border); border-radius: 6px; overflow: hidden; }
+  .seg button { border: none; border-radius: 0; padding: 6px 14px; }
+  .seg button + button { border-left: 1px solid var(--btn-border); }
+  .seg button.active { background: var(--accent); color: #000; }
+  .confirm { background: var(--confirm-bg); border: 1px solid var(--danger); border-radius: 8px; padding: 12px; }
   .confirm p { margin: 0 0 8px; }
   .confirm .row { justify-content: flex-end; margin: 0; }
 </style>
+<script>
+  // Apply a saved theme before first paint, so there's no dark flash.
+  try {
+    const t = localStorage.getItem('theme');
+    if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
 </head>
 <body>
   <div class="row">
@@ -85,7 +138,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   </div>
   <div class="row">
     <span>Threshold</span>
-    <strong id="thresholdVal" style="color: #ffd400"></strong>
+    <strong id="thresholdVal"></strong>
     <span style="flex: 1"></span>
     <span id="space" class="muted"></span>
   </div>
@@ -103,6 +156,12 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="row" style="margin-top: 0">
         <h2 id="settingsTitle">Settings</h2>
         <button id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="setting">
+        <div><strong>Appearance</strong><br><span class="muted">Saved in this browser.</span></div>
+        <div class="seg" id="themeSeg" role="group" aria-label="Appearance">
+          <button data-theme="system">System</button><button data-theme="light">Light</button><button data-theme="dark">Dark</button>
+        </div>
       </div>
       <label class="setting">
         <div><strong>Stealth mode</strong><br><span class="muted">Turns the device screen off. Back on after a reboot.</span></div>
@@ -169,7 +228,7 @@ async function refreshStatus() {
   const threshold = showServerValue ? s.threshold : dbToRms(Number(slider.value));
   const stateEl = document.getElementById('state');
   stateEl.textContent = s.paused ? '❚❚ PAUSED' : (s.isRecording ? '● REC' : '◉ LISTENING');
-  stateEl.style.color = s.paused ? '#ffd400' : (s.isRecording ? '#ff4040' : '#4caf50');
+  stateEl.className = s.paused ? 'st-paused' : (s.isRecording ? 'st-rec' : 'st-listening');
   const level = document.getElementById('level');
   level.style.width = meterPct(s.levelRms) + '%';
   level.classList.toggle('above', s.levelRms >= threshold);
@@ -226,6 +285,7 @@ function fmtTime(s) {
   s = isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
+function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
 function sizeDuration(f) { return Math.max(0, f.size - WAV_HEADER_BYTES) / BYTES_PER_SEC; }
 
 function queued(task) {
@@ -307,7 +367,7 @@ function drawWave(name) {
   ctx.clearRect(0, 0, w, h);
   const peaks = peaksCache[key(r.file)];
   if (!peaks) {
-    ctx.fillStyle = '#555';
+    ctx.fillStyle = cssVar('--wave-text');
     ctx.font = (11 * dpr) + 'px -apple-system, sans-serif';
     ctx.fillText(r.file.size <= WAV_HEADER_BYTES ? 'recording…' : 'loading…', 8 * dpr, h / 2 + 4 * dpr);
     return;
@@ -315,9 +375,10 @@ function drawWave(name) {
   const total = totalDuration(r.file);
   const progress = name === play.name && total ? currentPos() / total : 0;
   const barW = w / peaks.length;
+  const played = cssVar('--wave-played'), unplayed = cssVar('--wave');
   for (let i = 0; i < peaks.length; i++) {
     const bh = Math.max(1 * dpr, peaks[i] * (h - 4 * dpr));
-    ctx.fillStyle = (i + 0.5) / peaks.length <= progress ? '#4caf50' : '#666';
+    ctx.fillStyle = (i + 0.5) / peaks.length <= progress ? played : unplayed;
     ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 2 * dpr), bh);
   }
 }
@@ -530,6 +591,31 @@ function openSettings() {
   settingsEl.hidden = false;
 }
 function closeSettings() { settingsEl.hidden = true; }
+
+// Appearance: "system" follows prefers-color-scheme; light/dark force it.
+function currentTheme() {
+  try { return localStorage.getItem('theme') || 'system'; } catch (e) { return 'system'; }
+}
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+  try {
+    if (theme === 'system') localStorage.removeItem('theme');
+    else localStorage.setItem('theme', theme);
+  } catch (e) {}
+  for (const b of document.querySelectorAll('#themeSeg button')) {
+    b.classList.toggle('active', b.dataset.theme === theme);
+    b.setAttribute('aria-pressed', b.dataset.theme === theme);
+  }
+  for (const n in rows) drawWave(n);  // canvas colours don't follow CSS by themselves
+}
+for (const b of document.querySelectorAll('#themeSeg button')) {
+  b.addEventListener('click', () => applyTheme(b.dataset.theme));
+}
+window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
+  for (const n in rows) drawWave(n);
+});
+applyTheme(currentTheme());
 
 document.getElementById('settingsBtn').addEventListener('click', openSettings);
 document.getElementById('settingsClose').addEventListener('click', closeSettings);
