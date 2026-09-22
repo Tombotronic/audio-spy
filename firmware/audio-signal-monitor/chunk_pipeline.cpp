@@ -8,17 +8,6 @@
 #include "storage.h"
 #include "wav_writer.h"
 
-// Consumes and clears AppState.forceKeepRequested (a one-shot flag set by
-// the web UI's force-keep button).
-static bool consumeForceKeep() {
-    AppStateLock lock;
-    if (g_state.forceKeepRequested) {
-        g_state.forceKeepRequested = false;
-        return true;
-    }
-    return false;
-}
-
 static float currentThreshold() {
     AppStateLock lock;
     return g_state.thresholdRms;
@@ -46,7 +35,7 @@ static void setCurrentFile(const String& name) {
 }
 
 // Per-second keep decision. A second is "loud" when its RMS reaches the
-// threshold (force-keep marks a whole chunk loud). Kept: every second
+// threshold (Bypass Threshold marks every second loud). Kept: every second
 // within PRE_ROLL_S before / POST_ROLL_S after a loud second, plus silent
 // gaps of up to MERGE_GAP_S between kept seconds, so pauses in speech don't
 // split a recording into many files. Deciding the pre-roll needs the next
@@ -63,8 +52,14 @@ struct PendingChunk {
     bool loud[CHUNK_SECONDS] = {};
 };
 
+// Consecutive chunks start CHUNK_SECONDS apart; more than this off means
+// something (a pause) came between them.
+static constexpr int CONTIGUOUS_TOLERANCE_S = 2;
+
 static WavWriter s_writer;
 static bool s_runActive = false;
+static String s_runName;                      // file of the open run
+static float s_lastRms = 0.0f;                // loudest second of the latest chunk
 static bool s_prevLoud[CHUNK_SECONDS] = {};  // chunk before the pending one
 static PendingChunk s_pending;                // one chunk "ago", awaiting its decision
 
@@ -97,19 +92,37 @@ static void decideSeconds(const bool* prev, const bool* cur, const bool* next, b
     }
 }
 
+static String runPath(const String& name) {
+    return String(RECORDINGS_DIR) + "/" + name;
+}
+
+// Opening a run truncates, so never reuse a name that's on the card.
+static String unusedRunName(time_t audioStart) {
+    String name = netTimestampFilename("wav", audioStart);
+    // Unsynced names count up per call but restart at 000000 every boot.
+    while (name.startsWith("unsynced-") && SD.exists(runPath(name))) {
+        name = netTimestampFilename("wav", audioStart);
+    }
+    // Timestamps only repeat after the clock jumped back.
+    String base = name.substring(0, name.length() - 4);
+    for (int i = 1; SD.exists(runPath(name)); i++) name = base + "_" + i + ".wav";
+    return name;
+}
+
 // Named after when its first kept sample was recorded, not when it's written
 // (that's a chunk or more later).
 static void startRun(time_t audioStart) {
     storageEnforceRollingLimit();
-    String runName = netTimestampFilename("wav", audioStart);
-    s_runActive = s_writer.beginRun(String(RECORDINGS_DIR) + "/" + runName);
-    if (s_runActive) setCurrentFile(runName);
+    s_runName = unusedRunName(audioStart);
+    s_runActive = s_writer.beginRun(runPath(s_runName));
+    if (s_runActive) setCurrentFile(s_runName);
 }
 
 static void endRun() {
     if (!s_runActive) return;
     s_writer.endRun();
     s_runActive = false;
+    s_runName = "";
     setCurrentFile("");
 }
 
@@ -144,16 +157,20 @@ static void applyChunk(const PendingChunk& chunk, const bool* keep) {
         }
         s = e;
     }
-    if (s_runActive) s_writer.checkpoint();
+    if (s_runActive) {
+        s_writer.checkpoint();
+        // A long run (e.g. Bypass Threshold) must not fill the card either.
+        storageEnforceRollingLimit(s_runName);
+    }
     if (src) src.close();
     SD.remove(path);
     audioCaptureReleaseSlot(slotIndex);
 }
 
-// Called when pause is requested: there's no "next" chunk coming, so decide
-// the pending chunk on what's already known and cleanly close any open run
-// rather than leaving it dangling indefinitely.
-static void flushOnPause() {
+// Decides the pending chunk without a "next" one (none follows directly:
+// paused, or a gap in time) and closes any open run, rather than leaving
+// it dangling or merging it with audio from after the gap.
+static void flushPending() {
     if (s_pending.valid) {
         static const bool none[CHUNK_SECONDS] = {};
         bool keep[CHUNK_SECONDS];
@@ -163,12 +180,38 @@ static void flushOnPause() {
     }
     endRun();
     memset(s_prevLoud, 0, sizeof(s_prevLoud));
+    s_lastRms = 0.0f;
     publishLiveState(0.0f, false);
+}
+
+static void processChunk(const FilledChunk& chunk) {
+    float threshold = currentThreshold();
+    bool keepAll = bypassThreshold();
+    PendingChunk current;
+    current.valid = true;
+    current.slotIndex = chunk.slotIndex;
+    current.startTime = chunk.startTime;
+    for (int s = 0; s < CHUNK_SECONDS; s++) {
+        current.loud[s] = keepAll || chunk.secondRms[s] >= threshold;
+    }
+
+    if (s_pending.valid) {
+        long gap = (long)(current.startTime - s_pending.startTime) - CHUNK_SECONDS;
+        if (labs(gap) > CONTIGUOUS_TOLERANCE_S) flushPending();
+    }
+    if (s_pending.valid) {
+        bool keep[CHUNK_SECONDS];
+        decideSeconds(s_prevLoud, s_pending.loud, current.loud, keep);
+        applyChunk(s_pending, keep);
+        memcpy(s_prevLoud, s_pending.loud, sizeof(s_prevLoud));
+    }
+    s_pending = current;
+    s_lastRms = chunk.rms;
+    publishLiveState(s_lastRms, s_runActive);
 }
 
 static void pipelineTask(void*) {
     QueueHandle_t filled = audioCaptureFilledQueue();
-    bool wasPaused = false;
 
     for (;;) {
         bool paused;
@@ -176,39 +219,20 @@ static void pipelineTask(void*) {
             AppStateLock lock;
             paused = g_state.paused;
         }
-        if (paused) {
-            if (!wasPaused) flushOnPause();
-            wasPaused = true;
-            vTaskDelay(pdMS_TO_TICKS(100));
-            continue;
-        }
-        wasPaused = false;
 
+        // Chunks captured before a pause are still processed while paused.
         FilledChunk chunk;
-        if (xQueueReceive(filled, &chunk, pdMS_TO_TICKS(500)) != pdTRUE) {
-            // Nothing new; still keep status (free space etc) fresh.
-            publishLiveState(g_state.liveRms, s_runActive);
+        if (xQueueReceive(filled, &chunk, pdMS_TO_TICKS(paused ? 100 : 500)) == pdTRUE) {
+            processChunk(chunk);
             continue;
         }
 
-        float threshold = currentThreshold();
-        bool force = consumeForceKeep() || bypassThreshold();
-        PendingChunk current;
-        current.valid = true;
-        current.slotIndex = chunk.slotIndex;
-        current.startTime = chunk.startTime;
-        for (int s = 0; s < CHUNK_SECONDS; s++) {
-            current.loud[s] = force || chunk.secondRms[s] >= threshold;
+        if (paused && (s_pending.valid || s_runActive)) {
+            flushPending();
+        } else {
+            // Nothing new; still keep status (free space etc) fresh.
+            publishLiveState(s_lastRms, s_runActive);
         }
-
-        if (s_pending.valid) {
-            bool keep[CHUNK_SECONDS];
-            decideSeconds(s_prevLoud, s_pending.loud, current.loud, keep);
-            applyChunk(s_pending, keep);
-            memcpy(s_prevLoud, s_pending.loud, sizeof(s_prevLoud));
-        }
-        s_pending = current;
-        publishLiveState(chunk.rms, s_runActive);
     }
 }
 

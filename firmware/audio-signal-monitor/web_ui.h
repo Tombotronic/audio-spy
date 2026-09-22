@@ -277,12 +277,17 @@ let lastFiles = [];
 
 function key(f) { return f.name + '|' + f.size; }
 
-// "2026-09-22_20-37-06.wav" -> "22.09.2026 20:37:06". Files recorded
-// before NTP sync (e.g. "unsynced-000003.wav") just lose the extension.
+// "2026-09-22_20-37-06.wav" -> "22.09.2026 20:37:06" (a "_1" suffix, added
+// when a name was taken, is kept). Files recorded before NTP sync (e.g.
+// "unsynced-000003.wav") just lose the extension.
 function displayName(name) {
-  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.wav$/);
+  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})(_\d+)?\.wav$/);
   if (!m) return name.replace(/\.wav$/, '');
-  return m[3] + '.' + m[2] + '.' + m[1] + ' ' + m[4] + ':' + m[5] + ':' + m[6];
+  return m[3] + '.' + m[2] + '.' + m[1] + ' ' + m[4] + ':' + m[5] + ':' + m[6] + (m[7] ? ' (' + m[7].slice(1) + ')' : '');
+}
+// Filenames come from the SD card, which anyone can write to.
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 }
 function fmtTime(s) {
   s = isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
@@ -502,7 +507,7 @@ async function refreshFiles() {
     row.dataset.name = f.name;
     const sizeMB = (f.size / 1048576).toFixed(2);
     row.innerHTML =
-      '<div class="head"><span class="name">' + displayName(f.name) + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
+      '<div class="head"><span class="name">' + escapeHtml(displayName(f.name)) + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
       '<a href="/download?name=' + encodeURIComponent(f.name) + '"><button>Download</button></a>' +
       '<button class="danger">Delete</button></div>' +
       '<div class="player"><button class="play">▶</button><canvas></canvas><span class="time muted"></span></div>';

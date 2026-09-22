@@ -8,6 +8,7 @@
 
 bool netConnectWifi(uint32_t timeoutMs) {
     WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(true);
     WiFi.disconnect();
     delay(100);
     Serial.printf("[net] connecting to SSID \"%s\"\n", WIFI_SSID);
@@ -25,13 +26,7 @@ bool netConnectWifi(uint32_t timeoutMs) {
     }
 
     bool connected = WiFi.status() == WL_CONNECTED;
-    {
-        AppStateLock lock;
-        g_state.wifiConnected = connected;
-        if (connected) {
-            strncpy(g_state.ipAddress, WiFi.localIP().toString().c_str(), sizeof(g_state.ipAddress) - 1);
-        }
-    }
+    netRefreshState();
 
     if (connected) {
         Serial.printf("[net] WiFi connected, IP: %s\n", WiFi.localIP().toString().c_str());
@@ -41,8 +36,17 @@ bool netConnectWifi(uint32_t timeoutMs) {
     return connected;
 }
 
+static bool clockIsSet(const struct tm& t) {
+    // before NTP sync the clock starts at 1970
+    return t.tm_year + 1900 >= 2020;
+}
+
 bool netSyncTime(uint32_t timeoutMs) {
+#ifdef TZ_INFO
+    configTzTime(TZ_INFO, NTP_SERVER);  // POSIX rule, so DST switches by itself
+#else
     configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+#endif
 
     struct tm timeinfo;
     uint32_t start = millis();
@@ -51,7 +55,7 @@ bool netSyncTime(uint32_t timeoutMs) {
         if (getLocalTime(&timeinfo, 250)) {
             // getLocalTime can return true with an unset (1970) clock while
             // NTP is still in flight; only trust a post-2020 year.
-            if (timeinfo.tm_year + 1900 >= 2020) {
+            if (clockIsSet(timeinfo)) {
                 synced = true;
                 break;
             }
@@ -71,17 +75,30 @@ bool netSyncTime(uint32_t timeoutMs) {
     return synced;
 }
 
-String netLocalIp() {
+void netRefreshState() {
+    static uint32_t lastRefresh = 0;
+    static bool first = true;
+    if (!first && millis() - lastRefresh < 2000) return;
+    first = false;
+    lastRefresh = millis();
+
+    bool connected = WiFi.status() == WL_CONNECTED;
+    String ip = connected ? WiFi.localIP().toString() : String();
+    time_t now = time(nullptr);
+    struct tm timeinfo;
+    localtime_r(&now, &timeinfo);
+
     AppStateLock lock;
-    return String(g_state.ipAddress);
+    g_state.wifiConnected = connected;
+    strlcpy(g_state.ipAddress, ip.c_str(), sizeof(g_state.ipAddress));
+    g_state.timeSynced = clockIsSet(timeinfo);
 }
 
 String netTimestampFilename(const char* extension, time_t when) {
     if (when == 0) time(&when);
     struct tm timeinfo;
     localtime_r(&when, &timeinfo);
-    // before NTP sync the clock starts at 1970
-    if (timeinfo.tm_year + 1900 >= 2020) {
+    if (clockIsSet(timeinfo)) {
         char buf[32];
         strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &timeinfo);
         return String(buf) + "." + extension;

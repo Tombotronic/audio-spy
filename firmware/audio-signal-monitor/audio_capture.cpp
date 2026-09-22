@@ -6,9 +6,13 @@
 #include "app_state.h"
 #include "storage.h"
 
-// Small streaming buffer: filled by the mic, written to the slot's temp
-// file, then reused. Keeps RAM use tiny regardless of chunk length.
-static constexpr size_t STREAM_BUF_SAMPLES = 512;
+// Mic.record() only queues a buffer (the mic task has two request slots)
+// and returns; the buffer is filled later. So three small buffers rotate:
+// two are always queued, keeping capture continuous, while the oldest
+// completed one is read. 500 samples (31.25 ms) divides a second evenly.
+static constexpr size_t STREAM_BUF_SAMPLES = 500;
+static constexpr int NUM_STREAM_BUFS = 3;
+static_assert(CHUNK_SAMPLE_RATE % STREAM_BUF_SAMPLES == 0, "blocks must not straddle seconds");
 
 // M5Unified leaves the ES8311's analog mic PGA at its minimum (0 dB), so
 // recordings come out very quiet (quiet room ~-75 dBFS, voice peaks ~-20).
@@ -50,9 +54,32 @@ void audioCaptureReleaseSlot(uint8_t slotIndex) {
     xQueueSend(s_freeQueue, &slotIndex, portMAX_DELAY);
 }
 
-static void captureTask(void*) {
-    static int16_t streamBuf[STREAM_BUF_SAMPLES];
+static int16_t s_streamBufs[NUM_STREAM_BUFS][STREAM_BUF_SAMPLES];
+static int s_nextBuf = 0;        // buffer to queue next
+static bool s_streaming = false; // two requests are queued
 
+// Returns the oldest completed block (valid until the next call) and queues
+// another request, which waits until a request slot is free, i.e. until
+// that block has been filled.
+static const int16_t* nextBlock() {
+    if (!s_streaming) {
+        M5Cardputer.Mic.record(s_streamBufs[0], STREAM_BUF_SAMPLES, CHUNK_SAMPLE_RATE);
+        M5Cardputer.Mic.record(s_streamBufs[1], STREAM_BUF_SAMPLES, CHUNK_SAMPLE_RATE);
+        s_nextBuf = 2;
+        s_streaming = true;
+    }
+    int done = (s_nextBuf + 1) % NUM_STREAM_BUFS;
+    if (!M5Cardputer.Mic.record(s_streamBufs[s_nextBuf], STREAM_BUF_SAMPLES, CHUNK_SAMPLE_RATE)) {
+        // Nothing was waited for: keep real-time pace and write silence.
+        Serial.println("[audio] Mic.record() failed");
+        vTaskDelay(pdMS_TO_TICKS(STREAM_BUF_SAMPLES * 1000 / CHUNK_SAMPLE_RATE));
+        memset(s_streamBufs[done], 0, sizeof(s_streamBufs[done]));
+    }
+    s_nextBuf = (s_nextBuf + 1) % NUM_STREAM_BUFS;
+    return s_streamBufs[done];
+}
+
+static void captureTask(void*) {
     for (;;) {
         bool paused;
         {
@@ -60,6 +87,9 @@ static void captureTask(void*) {
             paused = g_state.paused;
         }
         if (paused) {
+            // The two queued requests complete on their own; start afresh
+            // on resume rather than with audio from before the pause.
+            s_streaming = false;
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
@@ -80,15 +110,15 @@ static void captureTask(void*) {
         float loudestSecond = 0.0f;  // of the seconds completed so far
         size_t recorded = 0;
         while (recorded < CHUNK_SAMPLES) {
-            size_t want = min(STREAM_BUF_SAMPLES, (size_t)(CHUNK_SAMPLES - recorded));
-            // Blocks briefly on the mic's DMA queue; the gap before the next
-            // call is just this small file.write(), well inside the queue's
-            // buffering margin, so no samples are dropped between reads.
-            M5Cardputer.Mic.record(streamBuf, want, CHUNK_SAMPLE_RATE);
-            tmp.write((const uint8_t*)streamBuf, want * sizeof(int16_t));
+            const size_t want = STREAM_BUF_SAMPLES;
+            // Waits for the next block; the gap before the next call is just
+            // this small file.write(), well inside the time the other queued
+            // request takes, so no samples are dropped between blocks.
+            const int16_t* block = nextBlock();
+            tmp.write((const uint8_t*)block, want * sizeof(int16_t));
             double blockSquares = 0.0;
             for (size_t i = 0; i < want; i++) {
-                double s = streamBuf[i];
+                double s = block[i];
                 blockSquares += s * s;
                 secondSquares[(recorded + i) / CHUNK_SAMPLE_RATE] += s * s;
             }
@@ -102,7 +132,11 @@ static void captureTask(void*) {
                 AppStateLock lock;
                 g_state.levelRms = (float)(sqrt(blockSquares / want) / 32768.0);
                 g_state.chunkLoudestSecondRms = loudestSecond;
+                paused = g_state.paused;
             }
+            // Pause takes effect now: the partial chunk is handed on as is
+            // (seconds not recorded have an RMS of 0 and no bytes to copy).
+            if (paused) break;
         }
         tmp.close();
 
@@ -119,10 +153,11 @@ static void captureTask(void*) {
     }
 }
 
-void audioCaptureStart() {
+bool audioCaptureStart() {
     M5Cardputer.Speaker.end();  // mic and speaker are mutually exclusive on this hardware
     if (!M5Cardputer.Mic.begin()) {
         Serial.println("[audio] Mic.begin() failed");
+        return false;
     }
     // Mic.begin() writes the codec's registers synchronously, so this sticks.
     uint8_t pga = 0x10 | (MIC_PGA_GAIN_DB / 3);
@@ -130,4 +165,5 @@ void audioCaptureStart() {
     Serial.printf("[audio] mic PGA reg=0x%02X (wrote 0x%02X)\n",
                   M5.In_I2C.readRegister8(ES8311_I2C_ADDR, ES8311_REG_ADC_PGA, 100000), pga);
     xTaskCreatePinnedToCore(captureTask, "audioCapture", 8192, nullptr, 3, nullptr, 1);
+    return true;
 }

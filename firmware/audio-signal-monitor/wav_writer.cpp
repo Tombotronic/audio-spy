@@ -47,13 +47,6 @@ bool WavWriter::beginRun(const String& path) {
     return true;
 }
 
-void WavWriter::appendSamples(const int16_t* data, size_t sampleCount) {
-    if (!_open) return;
-    size_t bytes = sampleCount * sizeof(int16_t);
-    _file.write((const uint8_t*)data, bytes);
-    _dataBytesWritten += bytes;
-}
-
 void WavWriter::appendFromFile(File& source, size_t byteCount) {
     if (!_open) return;
     static uint8_t buf[512];
@@ -62,8 +55,14 @@ void WavWriter::appendFromFile(File& source, size_t byteCount) {
         size_t toRead = remaining < sizeof(buf) ? remaining : sizeof(buf);
         size_t got = source.read(buf, toRead);
         if (got == 0) break;
-        _file.write(buf, got);
-        _dataBytesWritten += got;
+        // Only count what reached the card (a full card writes short), so
+        // the header never claims more audio than the file holds.
+        size_t written = _file.write(buf, got);
+        _dataBytesWritten += written;
+        if (written < got) {
+            Serial.printf("[wav] short write to %s\n", _path.c_str());
+            break;
+        }
         remaining -= got;
     }
 }

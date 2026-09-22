@@ -6,13 +6,14 @@
 //   GET  /files               JSON recording listing
 //   GET  /stream?name=X       streamed playback (audio/wav)
 //   GET  /download?name=X     forced download (Content-Disposition)
+//   GET  /peaks?name=X&n=N    coarse waveform: N peak values (JSON array)
 //   POST /delete?name=X       delete a recording
-//   GET  /status              JSON: recording/paused/liveRms/threshold/stealth/freeBytes/totalBytes/ip
-//   POST /threshold  value=F  set + persist RMS threshold
+//   POST /deleteall           delete all recordings except the open one
+//   GET  /status              JSON: recording/paused/levels/threshold/stealth/bypass/space/ip/uptime
+//   POST /threshold  value=F  set + persist RMS threshold (0..1)
 //   POST /stealth    on=0|1   set + persist stealth mode
-//   POST /pause                pause the record-analyze-decide loop
-//   POST /resume                resume it
-//   POST /forcekeep             force-keep the in-progress chunk (one-shot)
+//   POST /pause               pause the record-analyze-decide loop
+//   POST /resume              resume it
 //   POST /bypass     on=0|1   keep everything regardless of threshold (not persisted)
 void webServerStart();
 

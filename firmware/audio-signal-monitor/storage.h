@@ -22,4 +22,5 @@ uint64_t storageTotalBytes();
 
 // Deletes the oldest *.wav files in RECORDINGS_DIR until free space is
 // back above LOW_SPACE_MARGIN_BYTES, or there's nothing left to delete.
-void storageEnforceRollingLimit();
+// keepName (a name, not a path) is never deleted: the file being written.
+void storageEnforceRollingLimit(const String& keepName = "");

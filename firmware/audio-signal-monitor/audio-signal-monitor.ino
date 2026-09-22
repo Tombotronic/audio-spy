@@ -53,7 +53,11 @@ void setup() {
         while (true) delay(1000);
     }
     statusScreenBootStep("Mic");
-    audioCaptureStart();
+    if (!audioCaptureStart()) {
+        statusScreenBootStep("Mic failed!");
+        Serial.println("[boot] halting: mic failed to start");
+        while (true) delay(1000);
+    }
     chunkPipelineStart();
 
     Serial.println("[boot] recording pipeline started");
@@ -62,6 +66,7 @@ void setup() {
 void loop() {
     M5Cardputer.update();
     webServerHandle();
+    netRefreshState();
 
     if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
         for (char c : M5Cardputer.Keyboard.keysState().word) {

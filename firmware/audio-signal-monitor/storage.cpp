@@ -61,12 +61,13 @@ static std::vector<String> listRecordingsOldestFirst() {
     return names;
 }
 
-void storageEnforceRollingLimit() {
+void storageEnforceRollingLimit(const String& keepName) {
     if (storageFreeBytes() >= LOW_SPACE_MARGIN_BYTES) return;
 
     std::vector<String> names = listRecordingsOldestFirst();
     for (const String& name : names) {
         if (storageFreeBytes() >= LOW_SPACE_MARGIN_BYTES) break;
+        if (name == keepName) continue;
 
         String path = String(RECORDINGS_DIR) + "/" + name;
         Serial.printf("[storage] low space, deleting oldest recording: %s\n", path.c_str());

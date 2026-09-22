@@ -10,7 +10,9 @@ bool netConnectWifi(uint32_t timeoutMs = 15000);
 // getLocalTime() reports a plausible (post-2020) time.
 bool netSyncTime(uint32_t timeoutMs = 10000);
 
-String netLocalIp();
+// Call from loop(): keeps AppState's WiFi/IP/time-synced fields current
+// (WiFi reconnects on its own, and NTP keeps retrying after boot).
+void netRefreshState();
 
 // Timestamp-based filename for `when` (default: now), e.g.
 // "2026-09-22_14-05-30.wav". Falls back to

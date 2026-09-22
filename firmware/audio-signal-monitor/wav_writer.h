@@ -14,7 +14,6 @@
 class WavWriter {
 public:
     bool beginRun(const String& path);
-    void appendSamples(const int16_t* data, size_t sampleCount);
     // Streams byteCount bytes from an already-open source file into the
     // current run (used to move a chunk's SD-backed temp buffer into the
     // merged WAV without ever holding the whole chunk in RAM).
@@ -24,8 +23,6 @@ public:
     // flush/close; without this an interrupted run ends up as 0 bytes).
     void checkpoint();
     void endRun();
-    bool isOpen() const { return _open; }
-    const String& path() const { return _path; }
 
 private:
     File _file;

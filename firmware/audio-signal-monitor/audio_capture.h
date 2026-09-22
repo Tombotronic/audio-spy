@@ -28,8 +28,9 @@ bool audioCaptureInit();
 // Starts the capture task pinned to core 1. It continuously records
 // CHUNK_SAMPLES-sample chunks into a temp file per chunk (pausing/idling
 // per AppState.paused), computing the RMS of each second as it streams,
-// then pushes a FilledChunk onto the filled queue.
-void audioCaptureStart();
+// then pushes a FilledChunk onto the filled queue. A pause cuts the chunk
+// short. Returns false if the mic can't be started.
+bool audioCaptureStart();
 
 #define BYTES_PER_SECOND (CHUNK_SAMPLE_RATE * sizeof(int16_t))
 

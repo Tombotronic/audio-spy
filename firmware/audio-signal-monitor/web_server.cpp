@@ -3,11 +3,11 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <WebServer.h>
+#include <math.h>
 #include <vector>
 
 #include "app_state.h"
 #include "config.h"
-#include "net.h"
 #include "storage.h"
 #include "web_ui.h"
 
@@ -222,7 +222,10 @@ static void handleSetThreshold() {
     }
 
     float value = server.arg("value").toFloat();
-    if (value < 0) value = 0;
+    if (!isfinite(value) || value < 0 || value > 1) {
+        server.send(400, "text/plain", "value must be 0..1");
+        return;
+    }
 
     g_config.threshold = value;
     configSave(g_config);
@@ -246,32 +249,24 @@ static void handleSetStealth() {
     server.send(200, "text/plain", "ok");
 }
 
-static void handlePause() {
+// The lock is released before replying: a slow client must not hold up
+// the capture task, which takes it for every mic block.
+static void setPaused(bool paused) {
     if (!requireAuth()) return;
-    AppStateLock lock;
-    g_state.paused = true;
-    server.send(200, "text/plain", "ok");
-}
-
-static void handleResume() {
-    if (!requireAuth()) return;
-    AppStateLock lock;
-    g_state.paused = false;
+    {
+        AppStateLock lock;
+        g_state.paused = paused;
+    }
     server.send(200, "text/plain", "ok");
 }
 
 static void handleSetBypass() {
     if (!requireAuth()) return;
     bool on = server.hasArg("on") && server.arg("on") == "1";
-    AppStateLock lock;
-    g_state.bypassThreshold = on;
-    server.send(200, "text/plain", "ok");
-}
-
-static void handleForceKeep() {
-    if (!requireAuth()) return;
-    AppStateLock lock;
-    g_state.forceKeepRequested = true;
+    {
+        AppStateLock lock;
+        g_state.bypassThreshold = on;
+    }
     server.send(200, "text/plain", "ok");
 }
 
@@ -286,9 +281,8 @@ void webServerStart() {
     server.on("/status", HTTP_GET, handleStatus);
     server.on("/threshold", HTTP_POST, handleSetThreshold);
     server.on("/stealth", HTTP_POST, handleSetStealth);
-    server.on("/pause", HTTP_POST, handlePause);
-    server.on("/resume", HTTP_POST, handleResume);
-    server.on("/forcekeep", HTTP_POST, handleForceKeep);
+    server.on("/pause", HTTP_POST, []() { setPaused(true); });
+    server.on("/resume", HTTP_POST, []() { setPaused(false); });
     server.on("/bypass", HTTP_POST, handleSetBypass);
     server.begin();
     Serial.println("[web] server started on port 80");
