@@ -5,10 +5,8 @@
 #define CONFIG_PATH "/audio-signal-monitor/config.json"
 
 struct Config {
-    // Normalized RMS (0.0-1.0). This unit's ES8311 mic runs at minimum PGA
-    // gain (M5Unified's default Cardputer ADV enable sequence), so ambient
-    // room noise measures ~0.0002-0.001 in practice; 0.0015 sits just above
-    // that. Recalibrate live once the web UI's level readout exists (#8).
+    // Normalized RMS (0.0-1.0), compared against each second's RMS. Only the
+    // first-boot default; normally set from the web UI's threshold slider.
     float threshold = 0.0015f;
     bool stealthMode = false;
     String webPassword = "cardputer";

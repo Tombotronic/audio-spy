@@ -1,18 +1,19 @@
 # Audio Signal Monitor
 
-Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stack.com/en/core/Cardputer). Records continuously, keeps only the segments that contain sound, and exposes a web page to browse, audition, and collect the captured files.
+Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stack.com/en/core/Cardputer-Adv). Records continuously, keeps only the segments that contain sound, and exposes a web page to browse, audition, and collect the captured files.
 
 ## How it works
 
 - Audio is captured continuously in ~10 second chunks, measuring the RMS level of every second.
 - Seconds at/above the threshold are kept, plus 2 seconds before and after (to protect soft onsets/tails). Silent pauses of up to 5 seconds between kept parts are kept too, so one conversation stays in one WAV file; longer silence ends the file.
 - If the device reboots mid-recording, the file is repaired on the next boot (everything that reached the card is kept).
-- This guarantees nothing is ever missed — nothing is skipped live, only discarded in hindsight.
+- Capture never pauses for these decisions: each chunk is judged one chunk later (the pre-roll needs to know what comes next), so nothing is skipped live, only discarded in hindsight. As a result, the REC state appears 10–20 seconds after a sound starts; the file itself still begins 2 seconds before it.
 
 ## Hardware
 
 - M5Stack Cardputer Adv (built-in SD slot; this unit has no PSRAM)
 - Arduino framework + M5Unified/M5Cardputer library
+- The ES8311 mic codec's analog gain (PGA) is raised to +18 dB after `Mic.begin()`; M5Unified leaves it at 0 dB, which makes recordings very quiet
 
 ## Build
 
@@ -49,11 +50,13 @@ and fill in your WiFi credentials before flashing.
 
 ## Storage
 
-Files are written to `/audio-signal-monitor/` on the SD card, named by NTP-synced timestamp (e.g. `2026-09-22_14-05-30.wav`). When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
+Files are written to `/audio-signal-monitor/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
+
+Settings live in `/audio-signal-monitor/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (ignored at boot; the device always starts with the screen on).
 
 ## Web interface
 
-Password-protected (basic HTTP auth) page served over the local WiFi network:
+Password-protected (basic HTTP auth) page served over the local WiFi network at the device's IP. User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
@@ -63,7 +66,7 @@ Password-protected (basic HTTP auth) page served over the local WiFi network:
 
 ## On-device display
 
-Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. Shows boot progress while starting. Goes dark when stealth mode is enabled.
+Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress while starting (about 20 seconds, mostly WiFi and NTP). Goes dark when stealth mode is enabled.
 
 ## Status
 
