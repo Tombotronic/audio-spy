@@ -12,6 +12,9 @@
 #define METER_MIN_DB -60.0f
 #define METER_MAX_DB 0.0f
 #define PEAK_HOLD_MS 1000
+// The dB readout shows the level averaged over this window and only updates
+// that often; at the meter's frame rate the number is unreadable.
+#define READOUT_INTERVAL_MS 250
 
 static M5Canvas canvas(&M5Cardputer.Display);
 static bool s_wasStealth = false;
@@ -57,6 +60,10 @@ void statusScreenUpdate() {
     static uint32_t lastUpdate = 0;
     static float peakRms = 0;
     static uint32_t peakAt = 0;
+    static float readoutRms = 0;
+    static double readoutSquares = 0;
+    static int readoutFrames = 0;
+    static uint32_t readoutAt = 0;
     uint32_t now = millis();
     if (now - lastUpdate < UPDATE_INTERVAL_MS) return;
     lastUpdate = now;
@@ -97,6 +104,14 @@ void statusScreenUpdate() {
         peakRms = levelRms;
         peakAt = now;
     }
+    readoutSquares += (double)levelRms * levelRms;
+    readoutFrames++;
+    if (now - readoutAt >= READOUT_INTERVAL_MS) {
+        readoutRms = (float)sqrt(readoutSquares / readoutFrames);
+        readoutSquares = 0;
+        readoutFrames = 0;
+        readoutAt = now;
+    }
 
     canvas.fillSprite(BLACK);
 
@@ -122,7 +137,7 @@ void statusScreenUpdate() {
     }
     canvas.setTextColor(WHITE, BLACK);
     canvas.setTextDatum(top_right);
-    canvas.drawString(String(toDb(levelRms), 0) + " dB", canvas.width() - 4, 4);
+    canvas.drawString(String(toDb(readoutRms), 0) + " dB", canvas.width() - 4, 4);
     canvas.setTextDatum(top_left);
 
     const int x0 = 4, w = canvas.width() - 8;
