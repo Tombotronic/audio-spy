@@ -394,9 +394,16 @@ function drawWave(name) {
 function updateRowUi(name) {
   const r = rows[name];
   if (!r) return;
-  r.playBtn.textContent = play.loading === name ? '…' : (name === play.name && play.playing ? '❚❚' : '▶');
-  r.timeEl.textContent = (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(totalDuration(r.file));
+  setText(r.playBtn, play.loading === name ? '…' : (name === play.name && play.playing ? '❚❚' : '▶'));
+  setText(r.timeEl, (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(totalDuration(r.file)));
   drawWave(name);
+}
+
+// Rewriting text replaces the node even when it's unchanged; on the play
+// button, a replacement between mouse down and up (the playhead redraws
+// every 100 ms) makes Safari drop the click.
+function setText(el, text) {
+  if (el.textContent !== text) el.textContent = text;
 }
 
 // Must run synchronously inside the click handler: Safari only lets an
