@@ -22,9 +22,13 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   button:hover { background: #444; }
   button.danger { border-color: #a33; color: #f88; }
   input[type=range] { flex: 1; }
-  .file { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
+  .file { padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
+  .file .head { display: flex; align-items: baseline; gap: 6px; }
   .file .name { flex: 1; word-break: break-all; }
-  audio { height: 28px; }
+  .file .player { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .file .play { width: 36px; padding: 6px 0; }
+  .file canvas { flex: 1; min-width: 0; height: 40px; background: #1b1b1b; border-radius: 4px; cursor: pointer; }
+  .file .time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
   .muted { color: #888; font-size: 0.85em; }
 </style>
 </head>
@@ -75,28 +79,261 @@ async function refreshStatus() {
   document.getElementById('pauseBtn').textContent = s.paused ? 'Resume' : 'Pause';
 }
 
+// --- Recordings: waveform + playback -------------------------------------
+// The ESP32 WebServer is single-connection and ignores Range headers, which
+// Safari's <audio> requires. So instead of one <audio> per row, each WAV is
+// fetched once (sequentially, when its row scrolls into view), parsed here
+// for the waveform, and played through Web Audio (no <audio> element, which
+// Safari mishandles for blob WAVs). Playback is peak-normalised because the
+// mic records very quietly; downloads stay raw. Play state is keyed by name,
+// so list refreshes don't stop playback.
+const WAV_HEADER_BYTES = 44;
+const BYTES_PER_SEC = 16000 * 2;  // 16 kHz, 16-bit mono
+const PEAK_COUNT = 300;
+
+const TARGET_PEAK = 0.9;           // normalise playback to ~-1 dBFS...
+const MAX_GAIN = 64;               // ...but never boost more than +36 dB
+
+let actx = null;
+const play = { name: null, source: null, startCtx: 0, offset: 0, playing: false, raf: 0 };
+const cache = {};                  // key(name,size) -> { peaks, samples, sampleRate, duration, gain, buffer }
+const rows = {};                   // name -> { file, canvas, playBtn, timeEl }
+let loadChain = Promise.resolve();
+let listSignature = '';
+
+function key(f) { return f.name + '|' + f.size; }
+function fmtTime(s) {
+  s = isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+
+function parseWav(buf) {
+  const view = new DataView(buf);
+  let sampleRate = 16000;
+  let off = 12;
+  while (off + 8 <= buf.byteLength) {
+    const id = String.fromCharCode(view.getUint8(off), view.getUint8(off + 1), view.getUint8(off + 2), view.getUint8(off + 3));
+    const size = view.getUint32(off + 4, true);
+    if (id === 'fmt ') sampleRate = view.getUint32(off + 12, true);
+    if (id === 'data') {
+      const remaining = buf.byteLength - off - 8;
+      // size is a placeholder (0) while a run is still being written
+      const bytes = size > 0 && size <= remaining ? size : remaining;
+      return { samples: new Int16Array(buf, off + 8, Math.floor(bytes / 2)), sampleRate };
+    }
+    off += 8 + size + (size & 1);
+  }
+  return { samples: new Int16Array(0), sampleRate };
+}
+
+function computePeaks(samples) {
+  const peaks = new Float32Array(PEAK_COUNT);
+  const per = Math.max(1, Math.floor(samples.length / PEAK_COUNT));
+  let max = 0;
+  for (let i = 0; i < PEAK_COUNT; i++) {
+    let p = 0;
+    const end = Math.min(samples.length, (i + 1) * per);
+    for (let j = i * per; j < end; j++) {
+      const v = Math.abs(samples[j]);
+      if (v > p) p = v;
+    }
+    peaks[i] = p;
+    if (p > max) max = p;
+  }
+  // normalise per file so quiet recordings are still readable
+  if (max > 0) for (let i = 0; i < PEAK_COUNT; i++) peaks[i] /= max;
+  return peaks;
+}
+
+function loadRecording(f) {
+  const k = key(f);
+  if (cache[k]) return Promise.resolve(cache[k]);
+  loadChain = loadChain.catch(() => {}).then(async () => {
+    if (cache[k]) return cache[k];
+    const buf = await (await api('/stream?name=' + encodeURIComponent(f.name))).arrayBuffer();
+    const wav = parseWav(buf);
+    let peak = 0;
+    for (let i = 0; i < wav.samples.length; i++) {
+      const v = Math.abs(wav.samples[i]);
+      if (v > peak) peak = v;
+    }
+    cache[k] = {
+      peaks: computePeaks(wav.samples),
+      samples: wav.samples,
+      sampleRate: wav.sampleRate,
+      duration: wav.samples.length / wav.sampleRate,
+      gain: peak > 0 ? Math.min(MAX_GAIN, TARGET_PEAK * 32768 / peak) : 1,
+      buffer: null,                // AudioBuffer, built on first play
+    };
+    return cache[k];
+  });
+  return loadChain;
+}
+
+function drawWave(name) {
+  const r = rows[name];
+  if (!r) return;
+  const c = r.canvas;
+  const dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth * dpr, h = c.clientHeight * dpr;
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, w, h);
+  const entry = cache[key(r.file)];
+  if (!entry) {
+    ctx.fillStyle = '#555';
+    ctx.font = (11 * dpr) + 'px -apple-system, sans-serif';
+    ctx.fillText(r.file.size <= WAV_HEADER_BYTES ? 'recording…' : 'loading…', 8 * dpr, h / 2 + 4 * dpr);
+    return;
+  }
+  const progress = name === play.name && entry.duration ? currentPos() / entry.duration : 0;
+  const barW = w / PEAK_COUNT;
+  for (let i = 0; i < PEAK_COUNT; i++) {
+    const bh = Math.max(1 * dpr, entry.peaks[i] * (h - 4 * dpr));
+    ctx.fillStyle = (i + 0.5) / PEAK_COUNT <= progress ? '#4caf50' : '#666';
+    ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 1 * dpr), bh);
+  }
+}
+
+function updateRowUi(name) {
+  const r = rows[name];
+  if (!r) return;
+  const entry = cache[key(r.file)];
+  const total = entry ? entry.duration : Math.max(0, r.file.size - WAV_HEADER_BYTES) / BYTES_PER_SEC;
+  r.playBtn.textContent = name === play.name && play.playing ? '❚❚' : '▶';
+  r.timeEl.textContent = (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(total);
+  drawWave(name);
+}
+
+// Must run synchronously inside the click handler: Safari only lets an
+// AudioContext start (or resume) from a user gesture.
+function unlockAudio() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state !== 'running') actx.resume();
+}
+
+function currentPos() {
+  if (!play.name) return 0;
+  return play.playing ? play.offset + actx.currentTime - play.startCtx : play.offset;
+}
+
+function stopSource() {
+  if (!play.source) return;
+  play.source.onended = null;
+  try { play.source.stop(); } catch (e) {}
+  play.source = null;
+}
+
+function tick() {
+  cancelAnimationFrame(play.raf);
+  if (!play.playing) return;
+  updateRowUi(play.name);
+  play.raf = requestAnimationFrame(tick);
+}
+
+function pause() {
+  play.offset = currentPos();
+  play.playing = false;
+  stopSource();
+  updateRowUi(play.name);
+}
+
+async function playAt(f, fraction) {
+  const entry = await loadRecording(f);
+  if (!entry.buffer) {
+    entry.buffer = actx.createBuffer(1, Math.max(1, entry.samples.length), entry.sampleRate);
+    const ch = entry.buffer.getChannelData(0);
+    for (let i = 0; i < entry.samples.length; i++) ch[i] = entry.samples[i] / 32768;
+  }
+  if (play.name !== f.name) {
+    const prev = play.name;
+    stopSource();
+    play.playing = false;
+    play.name = f.name;
+    play.offset = 0;
+    if (prev) updateRowUi(prev);
+  }
+  let offset = fraction !== null ? fraction * entry.duration : play.offset;
+  if (offset >= entry.duration) offset = 0;
+
+  stopSource();
+  const src = actx.createBufferSource();
+  src.buffer = entry.buffer;
+  const gain = actx.createGain();
+  gain.gain.value = entry.gain;
+  src.connect(gain).connect(actx.destination);
+  src.onended = () => {
+    play.source = null;
+    play.playing = false;
+    play.offset = 0;
+    updateRowUi(f.name);
+  };
+  src.start(0, offset);
+  Object.assign(play, { source: src, startCtx: actx.currentTime, offset, playing: true });
+  tick();
+}
+
+const observer = new IntersectionObserver((entries) => {
+  for (const e of entries) {
+    if (!e.isIntersecting) continue;
+    const r = rows[e.target.dataset.name];
+    if (!r || r.file.size <= WAV_HEADER_BYTES) continue;
+    observer.unobserve(e.target);
+    loadRecording(r.file).then(() => updateRowUi(r.file.name)).catch(() => {});
+  }
+});
+
 async function refreshFiles() {
   const files = await (await api('/files')).json();
-  const el = document.getElementById('files');
-  el.innerHTML = '';
   files.sort((a, b) => b.name.localeCompare(a.name));
+  const sig = files.map(key).join(',');
+  if (sig === listSignature) return;   // unchanged: keep DOM (and canvases) as is
+  listSignature = sig;
+
+  const el = document.getElementById('files');
+  observer.disconnect();
+  el.innerHTML = '';
+  for (const n in rows) delete rows[n];
+
   for (const f of files) {
     const row = document.createElement('div');
     row.className = 'file';
+    row.dataset.name = f.name;
     const sizeMB = (f.size / 1048576).toFixed(2);
     row.innerHTML =
-      '<span class="name">' + f.name + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
-      '<audio controls src="/stream?name=' + encodeURIComponent(f.name) + '"></audio>' +
+      '<div class="head"><span class="name">' + f.name + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
       '<a href="/download?name=' + encodeURIComponent(f.name) + '"><button>Download</button></a>' +
-      '<button class="danger" data-name="' + f.name + '">Delete</button>';
-    row.querySelector('.danger').addEventListener('click', async (e) => {
+      '<button class="danger">Delete</button></div>' +
+      '<div class="player"><button class="play">▶</button><canvas></canvas><span class="time muted"></span></div>';
+    const r = rows[f.name] = {
+      file: f,
+      canvas: row.querySelector('canvas'),
+      playBtn: row.querySelector('.play'),
+      timeEl: row.querySelector('.time'),
+    };
+    r.playBtn.addEventListener('click', () => {
+      unlockAudio();
+      if (play.name === f.name && play.playing) pause();
+      else playAt(f, null).catch(() => {});
+    });
+    r.canvas.addEventListener('click', (e) => {
+      unlockAudio();
+      const rect = r.canvas.getBoundingClientRect();
+      playAt(f, (e.clientX - rect.left) / rect.width).catch(() => {});
+    });
+    row.querySelector('.danger').addEventListener('click', async () => {
       if (!confirm('Delete ' + f.name + '?')) return;
+      if (play.name === f.name) { stopSource(); play.playing = false; play.name = null; }
       await api('/delete?name=' + encodeURIComponent(f.name), { method: 'POST' });
       refreshFiles();
     });
     el.appendChild(row);
+    updateRowUi(f.name);
+    observer.observe(row);
   }
 }
+
+window.addEventListener('resize', () => { for (const n in rows) drawWave(n); });
 
 document.getElementById('threshold').addEventListener('change', async (e) => {
   await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + e.target.value });

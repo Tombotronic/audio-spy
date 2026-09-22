@@ -27,6 +27,8 @@ void setup() {
     }
 
     g_config = configLoad();
+    // Always boot with the screen on; stealth is a per-session choice.
+    g_config.stealthMode = false;
     {
         AppStateLock lock;
         g_state.thresholdRms = g_config.threshold;
