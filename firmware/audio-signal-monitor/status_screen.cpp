@@ -135,7 +135,7 @@ void statusScreenUpdate() {
         s_showingIp = false;
     }
 
-    if (paused) levelRms = chunkRms = 0;
+    if (paused) chunkRms = 0;  // the level meter stays live while paused
     if (levelRms >= peakRms || now - peakAt > PEAK_HOLD_MS) {
         peakRms = levelRms;
         peakAt = now;

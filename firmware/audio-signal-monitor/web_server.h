@@ -1,8 +1,10 @@
 #pragma once
 
-// Starts the HTTP server (port 80). Every route requires HTTP Basic Auth
-// against config.webPassword. Routes:
+// Starts the HTTP server (port 80). Every route except the icon and the
+// manifest requires HTTP Basic Auth against config.webPassword. Routes:
 //   GET  /                    HTML/JS UI
+//   GET  /icon.png            home screen icon (no auth)
+//   GET  /manifest.json       web app manifest (no auth)
 //   GET  /files               JSON recording listing
 //   GET  /stream?name=X       streamed playback (audio/wav)
 //   GET  /download?name=X     forced download (Content-Disposition)

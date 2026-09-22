@@ -61,9 +61,12 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
-- Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file)
+- Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
+- "Bypass Threshold" is greyed out while paused
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot)
-- Settings panel: stealth mode (blanks the on-device screen; off again after a reboot) and "delete all recordings" with confirmation
+- Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; off again after a reboot) and "delete all recordings" with confirmation
+
+Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Monitor" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
 ## On-device display
 

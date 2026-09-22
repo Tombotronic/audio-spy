@@ -2,8 +2,8 @@
 
 // Single-page UI: file list + playback/download/delete, threshold slider
 // with live level readout, pause/resume, a bypass-threshold switch (keep
-// everything while on), and a settings panel
-// (stealth toggle, delete all recordings).
+// everything while on), and a settings panel (IP address, storage,
+// appearance, stealth toggle, delete all recordings).
 // Served as one static page; all interactivity is plain fetch() calls
 // against the JSON/POST routes in web_server.cpp. Basic Auth is handled
 // by the browser's native prompt (the server challenges every route).
@@ -12,8 +12,19 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Audio Signal Monitor</title>
+<!-- Add to Home Screen: runs full screen with its own icon and name. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Audio Monitor">
+<meta name="theme-color" content="#f6f6f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="/manifest.json">
+<link rel="icon" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
 <style>
   /* Theme tokens: dark by default; light via the system setting unless the
      user forced dark, or when forced light (Settings -> Appearance). */
@@ -53,7 +64,14 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
     --wave: #b0b0b8; --wave-played: #2e7d32; --wave-text: #9a9aa0;
   }
 
-  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; background: var(--bg); color: var(--fg); }
+  html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+  /* Full screen from the home screen: keep clear of the notch and home bar. */
+  body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 0 auto; background: var(--bg); color: var(--fg);
+         padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+                  max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+         -webkit-tap-highlight-color: transparent; }
+  /* No double-tap zoom (and its tap delay) on controls. */
+  button, input, canvas, a { touch-action: manipulation; }
   h1 { font-size: 1.3em; flex: 1; margin: 0; }
   .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
   .bar { flex: 1; height: 14px; background: var(--bar); border-radius: 5px; overflow: hidden; position: relative; }
@@ -70,7 +88,9 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   #state.st-listening { color: var(--ok); }
   #state.st-rec { color: var(--rec); }
   #state.st-paused { color: var(--accent); }
-  #thresholdVal { color: var(--accent); }
+  #thresholdVal { color: var(--accent); margin-left: 4px; }
+  /* State left, threshold centred on the page (equal side columns). */
+  .status-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin: 10px 0; }
   /* Level bar, threshold slider and dB scale share one horizontal geometry
      (inset by the slider thumb's radius) so positions line up exactly. */
   .meter { margin: 10px 0; }
@@ -95,13 +115,36 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   .file .time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
   .muted { color: var(--muted); font-size: 0.85em; }
   [hidden] { display: none !important; }
-  .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: flex-start; padding: 48px 16px; z-index: 10; }
+  .overlay { position: fixed; inset: 0; background: var(--overlay); display: flex; justify-content: center; align-items: flex-start; z-index: 10; overflow-y: auto; overscroll-behavior: contain;
+             padding: max(48px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  /* Touch screens: finger-sized controls (Apple's 44 pt guideline). */
+  @media (pointer: coarse) {
+    button { min-height: 44px; padding: 8px 14px; font-size: 1em; }
+    .file .play { width: 44px; }
+    .file canvas { height: 44px; }
+    #threshold { height: 32px; }
+    .slider .track { top: 14px; }
+    .seg button { padding: 8px 14px; }
+  }
   .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; width: 100%; max-width: 480px; box-sizing: border-box; }
   .panel h2 { flex: 1; margin: 0; font-size: 1.15em; }
   .setting { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
   .setting > div { flex: 1; }
   .setting input[type=checkbox] { width: 20px; height: 20px; }
   .setting > .seg { flex: none; }
+  /* Storage: used space as a bar (recordings / everything else), free space
+     is the empty remainder. Tiny amounts still get a visible sliver. */
+  .storage-head { display: flex; align-items: baseline; justify-content: space-between; }
+  #spaceFree { font-size: 1.15em; font-variant-numeric: tabular-nums; }
+  .storage-bar { display: flex; height: 10px; margin: 8px 0 6px; background: var(--bar); border-radius: 5px; overflow: hidden; }
+  .storage-bar > div { height: 100%; transition: width 0.3s ease; }
+  #spaceRec { background: var(--ok); }
+  #spaceOther { background: var(--scale); }
+  .storage-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-variant-numeric: tabular-nums; }
+  .storage-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+  .dot.rec { background: var(--ok); }
+  .dot.other { background: var(--scale); }
   .seg { display: inline-grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--btn-border); border-radius: 6px; overflow: hidden; }
   .seg button { border: none; border-radius: 0; padding: 6px 14px; }
   .seg button + button { border-left: 1px solid var(--btn-border); }
@@ -124,10 +167,10 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
     <button id="settingsBtn" aria-label="Settings" title="Settings">⚙</button>
   </div>
 
-  <div class="row">
+  <div class="status-row">
     <strong id="state">-</strong>
-    <span style="flex: 1"></span>
-    <span id="ip" class="muted"></span>
+    <span>Threshold <strong id="thresholdVal"></strong></span>
+    <span></span>
   </div>
 
   <div class="meter">
@@ -137,12 +180,6 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
       <input type="range" id="threshold" min="-60" max="0" step="1" aria-label="Threshold">
     </div>
     <div class="scale" id="scale"></div>
-  </div>
-  <div class="row">
-    <span>Threshold</span>
-    <strong id="thresholdVal"></strong>
-    <span style="flex: 1"></span>
-    <span id="space" class="muted"></span>
   </div>
 
   <div class="row">
@@ -158,6 +195,22 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="row" style="margin-top: 0">
         <h2 id="settingsTitle">Settings</h2>
         <button id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="setting">
+        <div><strong>IP address</strong></div>
+        <span id="ip" class="muted"></span>
+      </div>
+      <div class="setting storage">
+        <div>
+          <div class="storage-head"><strong>Storage</strong><span><strong id="spaceFree"></strong> <span class="muted">free</span></span></div>
+          <div class="storage-bar" role="img" id="spaceBar"><div id="spaceRec"></div><div id="spaceOther"></div></div>
+          <div class="storage-legend muted">
+            <span><i class="dot rec"></i><span id="spaceRecText"></span></span>
+            <span><i class="dot other"></i><span id="spaceOtherText"></span></span>
+            <span style="flex: 1"></span>
+            <span id="spaceTotal"></span>
+          </div>
+        </div>
       </div>
       <div class="setting">
         <div><strong>Appearance</strong><br><span class="muted">Saved in this browser.</span></div>
@@ -236,9 +289,7 @@ async function refreshStatus() {
   level.classList.toggle('above', s.levelRms >= threshold);
   document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
-  const freeGB = (s.freeBytes / 1073741824).toFixed(1);
-  const totalGB = (s.totalBytes / 1073741824).toFixed(1);
-  document.getElementById('space').textContent = freeGB + ' GB free of ' + totalGB + ' GB';
+  showStorage(s.freeBytes, s.totalBytes);
   if (showServerValue) {
     slider.value = Math.round(rmsToDb(s.threshold));
     document.getElementById('thresholdVal').textContent = slider.value + ' dB';
@@ -246,6 +297,8 @@ async function refreshStatus() {
   document.getElementById('stealth').checked = s.stealthMode;
   document.getElementById('pauseBtn').textContent = s.paused ? 'Resume' : 'Pause';
   showBypass(s.bypassThreshold);
+  // Nothing is recorded while paused, so bypass has nothing to act on.
+  document.getElementById('bypassBtn').disabled = s.paused;
 }
 
 // --- Recordings: waveform + playback -------------------------------------
@@ -575,6 +628,30 @@ document.getElementById('stealth').addEventListener('change', async (e) => {
   await api('/stealth', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (e.target.checked ? '1' : '0') });
 });
 // --- Settings panel ------------------------------------------------------
+function fmtBytes(b) {
+  if (b >= 1e9) return (b / 1073741824).toFixed(1) + ' GB';
+  if (b >= 1e6) return (b / 1048576).toFixed(1) + ' MB';
+  return Math.round(b / 1024) + ' KB';
+}
+
+// Recordings come from the last /files listing; "other" is the rest of the
+// used space (filesystem, temp chunks, anything else on the card).
+function showStorage(free, total) {
+  if (!total) return;
+  const used = Math.max(0, total - free);
+  const rec = Math.min(used, lastFiles.reduce((sum, f) => sum + f.size, 0));
+  const other = used - rec;
+  const pct = (b) => b > 0 ? 'max(3px, ' + (b / total * 100) + '%)' : '0';
+  document.getElementById('spaceFree').textContent = fmtBytes(free);
+  document.getElementById('spaceRec').style.width = pct(rec);
+  document.getElementById('spaceOther').style.width = pct(other);
+  document.getElementById('spaceRecText').textContent = 'Recordings ' + fmtBytes(rec);
+  document.getElementById('spaceOtherText').textContent = 'Other ' + fmtBytes(other);
+  document.getElementById('spaceTotal').textContent = fmtBytes(total) + ' total';
+  document.getElementById('spaceBar').setAttribute('aria-label',
+    fmtBytes(free) + ' free of ' + fmtBytes(total) + ', recordings ' + fmtBytes(rec));
+}
+
 const settingsEl = document.getElementById('settings');
 
 function deletableFiles() { return lastFiles.filter((f) => !f.recording); }
@@ -688,6 +765,10 @@ refreshStatus();
 refreshFiles();
 setInterval(refreshStatus, 500);
 setInterval(refreshFiles, 10000);
+// iOS suspends a home-screen app in the background; catch up at once on return.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') { refreshStatus(); refreshFiles(); }
+});
 </script>
 </body>
 </html>

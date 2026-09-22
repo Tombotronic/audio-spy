@@ -56,7 +56,7 @@ void audioCaptureReleaseSlot(uint8_t slotIndex) {
 
 static int16_t s_streamBufs[NUM_STREAM_BUFS][STREAM_BUF_SAMPLES];
 static int s_nextBuf = 0;        // buffer to queue next
-static bool s_streaming = false; // two requests are queued
+static bool s_streaming = false; // two requests are queued (from then on, always)
 
 // Returns the oldest completed block (valid until the next call) and queues
 // another request, which waits until a request slot is free, i.e. until
@@ -79,6 +79,12 @@ static const int16_t* nextBlock() {
     return s_streamBufs[done];
 }
 
+static float blockRms(const int16_t* block) {
+    double squares = 0.0;
+    for (size_t i = 0; i < STREAM_BUF_SAMPLES; i++) squares += (double)block[i] * block[i];
+    return (float)(sqrt(squares / STREAM_BUF_SAMPLES) / 32768.0);
+}
+
 static void captureTask(void*) {
     for (;;) {
         bool paused;
@@ -87,10 +93,12 @@ static void captureTask(void*) {
             paused = g_state.paused;
         }
         if (paused) {
-            // The two queued requests complete on their own; start afresh
-            // on resume rather than with audio from before the pause.
-            s_streaming = false;
-            vTaskDelay(pdMS_TO_TICKS(100));
+            // Keep listening so the level meters stay live, but write
+            // nothing: no chunk, no temp file, no recording.
+            float level = blockRms(nextBlock());
+            AppStateLock lock;
+            g_state.levelRms = level;
+            g_state.chunkLoudestSecondRms = 0.0f;
             continue;
         }
 
@@ -116,10 +124,8 @@ static void captureTask(void*) {
             // request takes, so no samples are dropped between blocks.
             const int16_t* block = nextBlock();
             tmp.write((const uint8_t*)block, want * sizeof(int16_t));
-            double blockSquares = 0.0;
             for (size_t i = 0; i < want; i++) {
                 double s = block[i];
-                blockSquares += s * s;
                 secondSquares[(recorded + i) / CHUNK_SAMPLE_RATE] += s * s;
             }
             size_t secondsBefore = recorded / CHUNK_SAMPLE_RATE;
@@ -130,7 +136,7 @@ static void captureTask(void*) {
             }
             {
                 AppStateLock lock;
-                g_state.levelRms = (float)(sqrt(blockSquares / want) / 32768.0);
+                g_state.levelRms = blockRms(block);
                 g_state.chunkLoudestSecondRms = loudestSecond;
                 paused = g_state.paused;
             }

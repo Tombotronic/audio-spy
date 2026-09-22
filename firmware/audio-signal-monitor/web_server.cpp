@@ -8,6 +8,7 @@
 
 #include "app_state.h"
 #include "config.h"
+#include "icon_png.h"
 #include "storage.h"
 #include "web_ui.h"
 
@@ -40,6 +41,21 @@ static bool isCurrentRecording(const String& name) {
 static void handleIndex() {
     if (!requireAuth()) return;
     server.send_P(200, "text/html", WEB_INDEX_HTML);
+}
+
+// Icon and manifest are served without auth: iOS fetches them for Add to
+// Home Screen without the page's credentials, and they reveal nothing.
+static void handleIcon() {
+    server.sendHeader("Cache-Control", "max-age=604800");
+    server.send_P(200, "image/png", (const char*)ICON_PNG, ICON_PNG_LEN);
+}
+
+static void handleManifest() {
+    server.send(200, "application/manifest+json",
+                "{\"name\":\"Audio Signal Monitor\",\"short_name\":\"Audio Monitor\","
+                "\"start_url\":\"/\",\"display\":\"standalone\","
+                "\"background_color\":\"#111111\",\"theme_color\":\"#111111\","
+                "\"icons\":[{\"src\":\"/icon.png\",\"sizes\":\"180x180\",\"type\":\"image/png\"}]}");
 }
 
 static void handleFiles() {
@@ -272,6 +288,8 @@ static void handleSetBypass() {
 
 void webServerStart() {
     server.on("/", HTTP_GET, handleIndex);
+    server.on("/icon.png", HTTP_GET, handleIcon);
+    server.on("/manifest.json", HTTP_GET, handleManifest);
     server.on("/files", HTTP_GET, handleFiles);
     server.on("/stream", HTTP_GET, []() { handleStream(false); });
     server.on("/download", HTTP_GET, []() { handleStream(true); });
