@@ -23,7 +23,17 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   button { background: #333; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
   button:hover { background: #444; }
   button.danger { border-color: #a33; color: #f88; }
-  input[type=range] { flex: 1; }
+  /* Level bar, threshold slider and dB scale share one horizontal geometry
+     (inset by the slider thumb's radius) so positions line up exactly. */
+  .meter { margin: 10px 0; }
+  .meter .bar, .meter .scale { margin: 0 8px; }
+  .meter .scale { position: relative; height: 14px; font-size: 0.75em; color: #777; }
+  .meter .scale span { position: absolute; transform: translateX(-50%); }
+  #threshold { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 4px 0 0; background: transparent; }
+  #threshold::-webkit-slider-runnable-track { height: 4px; background: #444; border-radius: 2px; }
+  #threshold::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #ffd400; border: none; }
+  #threshold::-moz-range-track { height: 4px; background: #444; border-radius: 2px; }
+  #threshold::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #ffd400; border: none; }
   .file { padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
   .file .head { display: flex; align-items: baseline; gap: 6px; }
   .file .name { flex: 1; word-break: break-all; }
@@ -39,15 +49,20 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="row">
     <strong id="state">-</strong>
-    <div class="bar"><div id="level"></div><div id="thrMark"></div></div>
+    <span style="flex: 1"></span>
     <span id="ip" class="muted"></span>
   </div>
-  <div class="row muted"><span id="space"></span></div>
 
+  <div class="meter">
+    <div class="bar"><div id="level"></div><div id="thrMark"></div></div>
+    <input type="range" id="threshold" min="-70" max="-10" step="1" aria-label="Threshold">
+    <div class="scale" id="scale"></div>
+  </div>
   <div class="row">
-    <label for="threshold">Threshold</label>
-    <input type="range" id="threshold" min="-75" max="-30" step="1">
-    <span id="thresholdVal" class="muted"></span>
+    <span>Threshold</span>
+    <strong id="thresholdVal" style="color: #ffd400"></strong>
+    <span style="flex: 1"></span>
+    <span id="space" class="muted"></span>
   </div>
 
   <div class="row">
@@ -70,7 +85,8 @@ async function api(path, opts) {
 function rmsToDb(rms) { return rms > 0 ? 20 * Math.log10(rms) : -100; }
 function dbToRms(db) { return Math.pow(10, db / 20); }
 
-// Same scale as the device's status screen.
+// Same scale as the device's status screen; the threshold slider's
+// min/max attributes must match these.
 const METER_MIN_DB = -70, METER_MAX_DB = -10;
 function meterPct(rms) {
   const t = (rmsToDb(rms) - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
@@ -406,6 +422,13 @@ document.getElementById('pauseBtn').addEventListener('click', async () => {
 document.getElementById('forceKeepBtn').addEventListener('click', async () => {
   await api('/forcekeep', { method: 'POST' });
 });
+
+for (let db = -60; db <= -20; db += 10) {
+  const tick = document.createElement('span');
+  tick.textContent = db;
+  tick.style.left = ((db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB) * 100) + '%';
+  document.getElementById('scale').appendChild(tick);
+}
 
 refreshStatus();
 refreshFiles();
