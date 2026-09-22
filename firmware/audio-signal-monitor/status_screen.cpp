@@ -7,10 +7,10 @@
 
 #define UPDATE_INTERVAL_MS 50
 
-// Meter scale in dBFS. The mic is quiet (room ~-65, voice ~-45..-25), so a
-// linear scale would leave the bar almost empty; dB spreads it out.
-#define METER_MIN_DB -70.0f
-#define METER_MAX_DB -10.0f
+// Meter scale in dBFS (with +18 dB mic PGA: room ~-57, voice ~-35..-5).
+// A linear scale would leave the bar almost empty; dB spreads it out.
+#define METER_MIN_DB -60.0f
+#define METER_MAX_DB 0.0f
 #define PEAK_HOLD_MS 1000
 
 static M5Canvas canvas(&M5Cardputer.Display);
@@ -130,7 +130,7 @@ void statusScreenUpdate() {
     canvas.setTextSize(1);
     canvas.setTextColor(DARKGREY, BLACK);
     canvas.setTextDatum(top_center);
-    for (int db = -60; db <= -20; db += 10) {
+    for (int db = -50; db <= -10; db += 10) {
         int x = x0 + (int)((db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB) * w);
         canvas.drawFastVLine(x, levelY + levelH + 2, 3, DARKGREY);
         canvas.drawString(String(db), x, levelY + levelH + 6);

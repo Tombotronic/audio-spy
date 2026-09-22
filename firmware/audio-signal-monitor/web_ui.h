@@ -55,7 +55,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="meter">
     <div class="bar"><div id="level"></div><div id="thrMark"></div></div>
-    <input type="range" id="threshold" min="-70" max="-10" step="1" aria-label="Threshold">
+    <input type="range" id="threshold" min="-60" max="0" step="1" aria-label="Threshold">
     <div class="scale" id="scale"></div>
   </div>
   <div class="row">
@@ -87,7 +87,7 @@ function dbToRms(db) { return Math.pow(10, db / 20); }
 
 // Same scale as the device's status screen; the threshold slider's
 // min/max attributes must match these.
-const METER_MIN_DB = -70, METER_MAX_DB = -10;
+const METER_MIN_DB = -60, METER_MAX_DB = 0;
 function meterPct(rms) {
   const t = (rmsToDb(rms) - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
   return Math.max(0, Math.min(1, t)) * 100;
@@ -423,7 +423,7 @@ document.getElementById('forceKeepBtn').addEventListener('click', async () => {
   await api('/forcekeep', { method: 'POST' });
 });
 
-for (let db = -60; db <= -20; db += 10) {
+for (let db = -50; db <= -10; db += 10) {
   const tick = document.createElement('span');
   tick.textContent = db;
   tick.style.left = ((db - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB) * 100) + '%';

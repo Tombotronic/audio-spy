@@ -10,6 +10,15 @@
 // file, then reused. Keeps RAM use tiny regardless of chunk length.
 static constexpr size_t STREAM_BUF_SAMPLES = 512;
 
+// M5Unified leaves the ES8311's analog mic PGA at its minimum (0 dB), so
+// recordings come out very quiet (quiet room ~-75 dBFS, voice peaks ~-20).
+// Raising the analog gain lifts the signal above the ADC's own noise, which
+// a digital boost can't do. REG14: bit4 selects Mic1p/Mic1n, bits[3:0] are
+// the PGA gain in 3 dB steps (0..10 = 0..30 dB).
+static constexpr int MIC_PGA_GAIN_DB = 18;
+static constexpr uint8_t ES8311_I2C_ADDR = 0x18;
+static constexpr uint8_t ES8311_REG_ADC_PGA = 0x14;
+
 static QueueHandle_t s_freeQueue = nullptr;    // holds free slot indices (uint8_t)
 static QueueHandle_t s_filledQueue = nullptr;  // holds FilledChunk structs
 
@@ -102,5 +111,10 @@ void audioCaptureStart() {
     if (!M5Cardputer.Mic.begin()) {
         Serial.println("[audio] Mic.begin() failed");
     }
+    // Mic.begin() writes the codec's registers synchronously, so this sticks.
+    uint8_t pga = 0x10 | (MIC_PGA_GAIN_DB / 3);
+    M5.In_I2C.writeRegister8(ES8311_I2C_ADDR, ES8311_REG_ADC_PGA, pga, 100000);
+    Serial.printf("[audio] mic PGA reg=0x%02X (wrote 0x%02X)\n",
+                  M5.In_I2C.readRegister8(ES8311_I2C_ADDR, ES8311_REG_ADC_PGA, 100000), pga);
     xTaskCreatePinnedToCore(captureTask, "audioCapture", 8192, nullptr, 3, nullptr, 1);
 }
