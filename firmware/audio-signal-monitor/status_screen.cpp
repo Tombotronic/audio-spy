@@ -97,17 +97,24 @@ void statusScreenUpdate() {
     canvas.fillSprite(BLACK);
 
     // Header: state (left), current level in dB (right)
+    // (the built-in font has no symbols, so they're drawn: 14px box at 4,5)
     canvas.setTextSize(2);
-    canvas.setCursor(4, 4);
+    canvas.setCursor(24, 4);
     if (paused) {
+        canvas.fillRect(5, 5, 4, 14, YELLOW);
+        canvas.fillRect(12, 5, 4, 14, YELLOW);
         canvas.setTextColor(YELLOW, BLACK);
         canvas.print("PAUSED");
     } else if (isRecording) {
+        canvas.fillCircle(11, 12, 7, RED);
         canvas.setTextColor(RED, BLACK);
         canvas.print("REC");
     } else {
+        canvas.drawCircle(11, 12, 7, GREEN);
+        canvas.drawCircle(11, 12, 6, GREEN);
+        canvas.fillCircle(11, 12, 3, GREEN);
         canvas.setTextColor(GREEN, BLACK);
-        canvas.print("listening");
+        canvas.print("LISTENING");
     }
     canvas.setTextColor(WHITE, BLACK);
     canvas.setTextDatum(top_right);

@@ -119,7 +119,7 @@ async function refreshStatus() {
   const showServerValue = !sliderDragging && pendingDb === null;
   const threshold = showServerValue ? s.threshold : dbToRms(Number(slider.value));
   const stateEl = document.getElementById('state');
-  stateEl.textContent = s.paused ? 'PAUSED' : (s.isRecording ? '● REC' : 'listening');
+  stateEl.textContent = s.paused ? '❚❚ PAUSED' : (s.isRecording ? '● REC' : '◉ LISTENING');
   stateEl.style.color = s.paused ? '#ffd400' : (s.isRecording ? '#ff4040' : '#4caf50');
   const level = document.getElementById('level');
   level.style.width = meterPct(s.levelRms) + '%';
