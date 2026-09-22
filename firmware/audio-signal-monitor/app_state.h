@@ -21,7 +21,7 @@ struct AppState {
     float chunkSoFarRms = 0.0f; // running RMS of the chunk being recorded
     uint64_t freeBytes = 0;
     uint64_t totalBytes = 0;
-    char currentFile[64] = {0};
+    char currentFile[64] = {0}; // name of the WAV being written, "" if none
     char ipAddress[16] = {0};
     bool wifiConnected = false;
     bool timeSynced = false;

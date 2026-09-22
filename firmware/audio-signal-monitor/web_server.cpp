@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <WebServer.h>
+#include <vector>
 
 #include "app_state.h"
 #include "config.h"
@@ -31,6 +32,11 @@ static bool isSafeRecordingName(const String& name) {
     return true;
 }
 
+static bool isCurrentRecording(const String& name) {
+    AppStateLock lock;
+    return name == g_state.currentFile;
+}
+
 static void handleIndex() {
     if (!requireAuth()) return;
     server.send_P(200, "text/html", WEB_INDEX_HTML);
@@ -51,6 +57,7 @@ static void handleFiles() {
                 JsonObject o = arr.add<JsonObject>();
                 o["name"] = name;
                 o["size"] = entry.size();
+                o["recording"] = isCurrentRecording(name);
             }
             entry.close();
             entry = dir.openNextFile();
@@ -84,10 +91,58 @@ static void handleStream(bool download) {
     file.close();
 }
 
+// Coarse waveform for the UI: max |sample| of a short window at each of n
+// evenly spaced positions. Reads a few hundred KB at most from the SD card
+// and sends ~n numbers, instead of the whole WAV going over WiFi.
+static void handlePeaks() {
+    if (!requireAuth()) return;
+    if (!server.hasArg("name") || !isSafeRecordingName(server.arg("name"))) {
+        server.send(400, "text/plain", "bad name");
+        return;
+    }
+    int n = server.hasArg("n") ? server.arg("n").toInt() : 100;
+    n = constrain(n, 10, 400);
+
+    File file = SD.open(String(RECORDINGS_DIR) + "/" + server.arg("name"), FILE_READ);
+    if (!file) {
+        server.send(404, "text/plain", "not found");
+        return;
+    }
+
+    static constexpr size_t HEADER_BYTES = 44;
+    static constexpr size_t WINDOW_SAMPLES = 512;  // 32 ms at 16 kHz
+    static int16_t window[WINDOW_SAMPLES];
+    size_t size = file.size();
+    uint32_t totalSamples = size > HEADER_BYTES ? (size - HEADER_BYTES) / 2 : 0;
+
+    String out = "[";
+    for (int i = 0; i < n && totalSamples > 0; i++) {
+        uint32_t start = (uint64_t)totalSamples * i / n;
+        size_t want = min((uint32_t)WINDOW_SAMPLES, totalSamples - start);
+        file.seek(HEADER_BYTES + start * 2);
+        size_t got = file.read((uint8_t*)window, want * 2) / 2;
+        int peak = 0;
+        for (size_t j = 0; j < got; j++) {
+            int v = abs((int)window[j]);
+            if (v > peak) peak = v;
+        }
+        if (i > 0) out += ',';
+        out += peak;
+    }
+    out += "]";
+    file.close();
+    server.send(200, "application/json", out);
+}
+
 static void handleDelete() {
     if (!requireAuth()) return;
     if (!server.hasArg("name") || !isSafeRecordingName(server.arg("name"))) {
         server.send(400, "text/plain", "bad name");
+        return;
+    }
+
+    if (isCurrentRecording(server.arg("name"))) {
+        server.send(409, "text/plain", "recording in progress");
         return;
     }
 
@@ -97,6 +152,40 @@ static void handleDelete() {
     } else {
         server.send(500, "text/plain", "delete failed");
     }
+}
+
+// Deletes every recording except the one currently being written (if any).
+static void handleDeleteAll() {
+    if (!requireAuth()) return;
+
+    std::vector<String> names;
+    File dir = SD.open(RECORDINGS_DIR);
+    if (dir) {
+        File entry = dir.openNextFile();
+        while (entry) {
+            String name = entry.name();
+            if (!entry.isDirectory() && name.endsWith(".wav")) names.push_back(name);
+            entry.close();
+            entry = dir.openNextFile();
+        }
+        dir.close();
+    }
+
+    int deleted = 0, skipped = 0;
+    for (const String& name : names) {
+        if (isCurrentRecording(name)) {
+            skipped++;
+            continue;
+        }
+        if (SD.remove(String(RECORDINGS_DIR) + "/" + name)) deleted++;
+    }
+
+    JsonDocument doc;
+    doc["deleted"] = deleted;
+    doc["skipped"] = skipped;
+    String out;
+    serializeJson(doc, out);
+    server.send(200, "application/json", out);
 }
 
 static void handleStatus() {
@@ -182,7 +271,9 @@ void webServerStart() {
     server.on("/files", HTTP_GET, handleFiles);
     server.on("/stream", HTTP_GET, []() { handleStream(false); });
     server.on("/download", HTTP_GET, []() { handleStream(true); });
+    server.on("/peaks", HTTP_GET, handlePeaks);
     server.on("/delete", HTTP_POST, handleDelete);
+    server.on("/deleteall", HTTP_POST, handleDeleteAll);
     server.on("/status", HTTP_GET, handleStatus);
     server.on("/threshold", HTTP_POST, handleSetThreshold);
     server.on("/stealth", HTTP_POST, handleSetStealth);

@@ -32,6 +32,14 @@ static void publishLiveState(float rms, bool recording) {
     g_state.totalBytes = storageTotalBytes();
 }
 
+// Name (not path) of the WAV currently being written, or "" between runs,
+// so the web server never deletes a file that's still open.
+static void setCurrentFile(const String& name) {
+    AppStateLock lock;
+    strncpy(g_state.currentFile, name.c_str(), sizeof(g_state.currentFile) - 1);
+    g_state.currentFile[sizeof(g_state.currentFile) - 1] = '\0';
+}
+
 struct DecisionSlot {
     bool valid = false;
     uint8_t slotIndex = 0;
@@ -53,8 +61,9 @@ static void applyDecision(uint8_t slotIndex, bool effectiveKeep) {
     if (effectiveKeep) {
         if (!s_runActive) {
             storageEnforceRollingLimit();
-            String runPath = String(RECORDINGS_DIR) + "/" + netTimestampFilename("wav");
-            s_runActive = s_writer.beginRun(runPath);
+            String runName = netTimestampFilename("wav");
+            s_runActive = s_writer.beginRun(String(RECORDINGS_DIR) + "/" + runName);
+            if (s_runActive) setCurrentFile(runName);
         }
         if (s_runActive) {
             File src = SD.open(path, FILE_READ);
@@ -67,6 +76,7 @@ static void applyDecision(uint8_t slotIndex, bool effectiveKeep) {
     } else if (s_runActive) {
         s_writer.endRun();
         s_runActive = false;
+        setCurrentFile("");
     }
     SD.remove(path);
     audioCaptureReleaseSlot(slotIndex);
@@ -84,6 +94,7 @@ static void flushOnPause() {
     if (s_runActive) {
         s_writer.endRun();
         s_runActive = false;
+        setCurrentFile("");
     }
     s_prevPrevKeepSelf = false;
     publishLiveState(0.0f, false);

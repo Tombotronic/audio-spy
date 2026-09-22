@@ -1,7 +1,8 @@
 #pragma once
 
 // Single-page UI: file list + playback/download/delete, threshold slider
-// with live level readout, stealth toggle, pause/resume, force-keep.
+// with live level readout, pause/resume, force-keep, and a settings panel
+// (stealth toggle, delete all recordings).
 // Served as one static page; all interactivity is plain fetch() calls
 // against the JSON/POST routes in web_server.cpp. Basic Auth is handled
 // by the browser's native prompt (the server challenges every route).
@@ -29,10 +30,14 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   .meter .bar, .meter .scale { margin: 0 8px; }
   .meter .scale { position: relative; height: 14px; font-size: 0.75em; color: #777; }
   .meter .scale span { position: absolute; transform: translateX(-50%); }
-  #threshold { -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 4px 0 0; background: transparent; }
-  #threshold::-webkit-slider-runnable-track { height: 4px; background: #444; border-radius: 2px; }
+  /* The native track spans the full width (the thumb needs the 8px inset on
+     each side), so it's transparent; .track draws it with the bar's width. */
+  .slider { position: relative; margin-top: 4px; }
+  .slider .track { position: absolute; left: 8px; right: 8px; top: 8px; height: 4px; background: #444; border-radius: 2px; }
+  #threshold { position: relative; -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0; background: transparent; display: block; }
+  #threshold::-webkit-slider-runnable-track { height: 4px; background: transparent; }
   #threshold::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #ffd400; border: none; }
-  #threshold::-moz-range-track { height: 4px; background: #444; border-radius: 2px; }
+  #threshold::-moz-range-track { height: 4px; background: transparent; }
   #threshold::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #ffd400; border: none; }
   .file { padding: 8px 0; border-bottom: 1px solid #333; font-size: 0.9em; }
   .file .head { display: flex; align-items: baseline; gap: 6px; }
@@ -42,10 +47,27 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   .file canvas { flex: 1; min-width: 0; height: 40px; background: #1b1b1b; border-radius: 4px; cursor: pointer; }
   .file .time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
   .muted { color: #888; font-size: 0.85em; }
+  [hidden] { display: none !important; }
+  h1 { flex: 1; margin: 0; }
+  #settingsBtn { font-size: 1.2em; padding: 4px 10px; }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.danger.solid { background: #a33; color: #fff; border-color: #a33; }
+  .overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: flex-start; padding: 48px 16px; z-index: 10; }
+  .panel { background: #1b1b1b; border: 1px solid #333; border-radius: 10px; padding: 16px; width: 100%; max-width: 480px; box-sizing: border-box; }
+  .panel h2 { flex: 1; margin: 0; font-size: 1.15em; }
+  .setting { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #333; }
+  .setting > div { flex: 1; }
+  .setting input[type=checkbox] { width: 20px; height: 20px; }
+  .confirm { background: #2a1414; border: 1px solid #a33; border-radius: 8px; padding: 12px; }
+  .confirm p { margin: 0 0 8px; }
+  .confirm .row { justify-content: flex-end; margin: 0; }
 </style>
 </head>
 <body>
-  <h1>Audio Signal Monitor</h1>
+  <div class="row">
+    <h1>Audio Signal Monitor</h1>
+    <button id="settingsBtn" aria-label="Settings" title="Settings">⚙</button>
+  </div>
 
   <div class="row">
     <strong id="state">-</strong>
@@ -55,7 +77,10 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="meter">
     <div class="bar"><div id="level"></div><div id="thrMark"></div></div>
-    <input type="range" id="threshold" min="-60" max="0" step="1" aria-label="Threshold">
+    <div class="slider">
+      <div class="track"></div>
+      <input type="range" id="threshold" min="-60" max="0" step="1" aria-label="Threshold">
+    </div>
     <div class="scale" id="scale"></div>
   </div>
   <div class="row">
@@ -68,11 +93,35 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   <div class="row">
     <button id="pauseBtn">Pause</button>
     <button id="forceKeepBtn">Force-keep chunk</button>
-    <label class="row"><input type="checkbox" id="stealth"> Stealth mode</label>
   </div>
 
   <h2>Recordings</h2>
   <div id="files"></div>
+
+  <div id="settings" class="overlay" hidden>
+    <div class="panel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="row" style="margin-top: 0">
+        <h2 id="settingsTitle">Settings</h2>
+        <button id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <label class="setting">
+        <div><strong>Stealth mode</strong><br><span class="muted">Turns the device screen off. Back on after a reboot.</span></div>
+        <input type="checkbox" id="stealth">
+      </label>
+      <div class="setting">
+        <div><strong>Delete all recordings</strong><br><span class="muted" id="deleteAllInfo"></span></div>
+        <button class="danger" id="deleteAllBtn">Delete all…</button>
+      </div>
+      <div id="deleteAllConfirm" class="confirm" hidden>
+        <p>Do you really want to delete <strong id="deleteAllCount"></strong>? This can't be undone.</p>
+        <div class="row">
+          <button id="deleteAllCancel">Cancel</button>
+          <button class="danger solid" id="deleteAllYes">Yes, delete all</button>
+        </div>
+      </div>
+      <p id="deleteAllResult" class="muted" hidden></p>
+    </div>
+  </div>
 
 <script>
 async function api(path, opts) {
@@ -126,9 +175,9 @@ async function refreshStatus() {
   level.classList.toggle('above', s.levelRms >= threshold);
   document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
-  const freeMB = (s.freeBytes / 1048576).toFixed(0);
-  const totalMB = (s.totalBytes / 1048576).toFixed(0);
-  document.getElementById('space').textContent = freeMB + ' MB free of ' + totalMB + ' MB';
+  const freeGB = (s.freeBytes / 1073741824).toFixed(1);
+  const totalGB = (s.totalBytes / 1073741824).toFixed(1);
+  document.getElementById('space').textContent = freeGB + ' GB free of ' + totalGB + ' GB';
   if (showServerValue) {
     slider.value = Math.round(rmsToDb(s.threshold));
     document.getElementById('thresholdVal').textContent = slider.value + ' dB';
@@ -139,25 +188,30 @@ async function refreshStatus() {
 
 // --- Recordings: waveform + playback -------------------------------------
 // The ESP32 WebServer is single-connection and ignores Range headers, which
-// Safari's <audio> requires. So instead of one <audio> per row, each WAV is
-// fetched once (sequentially, when its row scrolls into view), parsed here
-// for the waveform, and played through Web Audio (no <audio> element, which
-// Safari mishandles for blob WAVs). Playback is peak-normalised because the
-// mic records very quietly; downloads stay raw. Play state is keyed by name,
-// so list refreshes don't stop playback.
+// Safari's <audio> requires. So:
+// - The waveform is a coarse indication from /peaks (~100 values the device
+//   samples from the file on the SD card), not the whole WAV over WiFi.
+// - The audio itself is fetched only when a row is played, then played
+//   through Web Audio (no <audio> element, which Safari mishandles for blob
+//   WAVs), peak-normalised because the mic records quietly. Downloads stay
+//   raw. Play state is keyed by name, so list refreshes don't stop playback.
+// Both fetches go through one queue, since the server handles one at a time.
 const WAV_HEADER_BYTES = 44;
 const BYTES_PER_SEC = 16000 * 2;  // 16 kHz, 16-bit mono
-const PEAK_COUNT = 300;
+const PEAK_COUNT = 100;
+const PLAYHEAD_REDRAW_MS = 100;
 
 const TARGET_PEAK = 0.9;           // normalise playback to ~-1 dBFS...
 const MAX_GAIN = 64;               // ...but never boost more than +36 dB
 
 let actx = null;
-const play = { name: null, source: null, startCtx: 0, offset: 0, playing: false, raf: 0 };
-const cache = {};                  // key(name,size) -> { peaks, samples, sampleRate, duration, gain, buffer }
+const play = { name: null, source: null, startCtx: 0, offset: 0, playing: false, timer: 0, loading: null };
+const peaksCache = {};             // key(name,size) -> Float32Array (0..1)
+const audioCache = {};             // key(name,size) -> { samples, sampleRate, duration, gain, buffer }
 const rows = {};                   // name -> { file, canvas, playBtn, timeEl }
-let loadChain = Promise.resolve();
+let fetchQueue = Promise.resolve();
 let listSignature = '';
+let lastFiles = [];
 
 function key(f) { return f.name + '|' + f.size; }
 
@@ -172,6 +226,13 @@ function fmtTime(s) {
   s = isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
+function sizeDuration(f) { return Math.max(0, f.size - WAV_HEADER_BYTES) / BYTES_PER_SEC; }
+
+function queued(task) {
+  const p = fetchQueue.catch(() => {}).then(task);
+  fetchQueue = p;
+  return p;
+}
 
 function parseWav(buf) {
   const view = new DataView(buf);
@@ -182,12 +243,11 @@ function parseWav(buf) {
     const size = view.getUint32(off + 4, true);
     if (id === 'fmt ') sampleRate = view.getUint32(off + 12, true);
     if (id === 'data') {
-      const remaining = buf.byteLength - off - 8;
       // Use everything after the data header, not its size field: the size
       // lags behind while a run is being written, and a run cut off by a
       // reboot can hold more audio than its last header update says. The
       // device's writer never appends other chunks after "data".
-      const bytes = remaining;
+      const bytes = buf.byteLength - off - 8;
       return { samples: new Int16Array(buf, off + 8, Math.floor(bytes / 2)), sampleRate };
     }
     off += 8 + size + (size & 1);
@@ -195,30 +255,24 @@ function parseWav(buf) {
   return { samples: new Int16Array(0), sampleRate };
 }
 
-function computePeaks(samples) {
-  const peaks = new Float32Array(PEAK_COUNT);
-  const per = Math.max(1, Math.floor(samples.length / PEAK_COUNT));
-  let max = 0;
-  for (let i = 0; i < PEAK_COUNT; i++) {
-    let p = 0;
-    const end = Math.min(samples.length, (i + 1) * per);
-    for (let j = i * per; j < end; j++) {
-      const v = Math.abs(samples[j]);
-      if (v > p) p = v;
-    }
-    peaks[i] = p;
-    if (p > max) max = p;
-  }
-  // normalise per file so quiet recordings are still readable
-  if (max > 0) for (let i = 0; i < PEAK_COUNT; i++) peaks[i] /= max;
-  return peaks;
+function loadPeaks(f) {
+  const k = key(f);
+  if (peaksCache[k]) return Promise.resolve(peaksCache[k]);
+  return queued(async () => {
+    if (peaksCache[k]) return peaksCache[k];
+    const raw = await (await api('/peaks?n=' + PEAK_COUNT + '&name=' + encodeURIComponent(f.name))).json();
+    const max = Math.max(1, ...raw);
+    // normalise per file so quiet recordings are still readable
+    peaksCache[k] = Float32Array.from(raw, (v) => v / max);
+    return peaksCache[k];
+  });
 }
 
-function loadRecording(f) {
+function loadAudio(f) {
   const k = key(f);
-  if (cache[k]) return Promise.resolve(cache[k]);
-  loadChain = loadChain.catch(() => {}).then(async () => {
-    if (cache[k]) return cache[k];
+  if (audioCache[k]) return Promise.resolve(audioCache[k]);
+  return queued(async () => {
+    if (audioCache[k]) return audioCache[k];
     const buf = await (await api('/stream?name=' + encodeURIComponent(f.name))).arrayBuffer();
     const wav = parseWav(buf);
     let peak = 0;
@@ -226,17 +280,20 @@ function loadRecording(f) {
       const v = Math.abs(wav.samples[i]);
       if (v > peak) peak = v;
     }
-    cache[k] = {
-      peaks: computePeaks(wav.samples),
+    audioCache[k] = {
       samples: wav.samples,
       sampleRate: wav.sampleRate,
       duration: wav.samples.length / wav.sampleRate,
       gain: peak > 0 ? Math.min(MAX_GAIN, TARGET_PEAK * 32768 / peak) : 1,
       buffer: null,                // AudioBuffer, built on first play
     };
-    return cache[k];
+    return audioCache[k];
   });
-  return loadChain;
+}
+
+function totalDuration(f) {
+  const audio = audioCache[key(f)];
+  return audio ? audio.duration : sizeDuration(f);
 }
 
 function drawWave(name) {
@@ -248,29 +305,28 @@ function drawWave(name) {
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
   const ctx = c.getContext('2d');
   ctx.clearRect(0, 0, w, h);
-  const entry = cache[key(r.file)];
-  if (!entry) {
+  const peaks = peaksCache[key(r.file)];
+  if (!peaks) {
     ctx.fillStyle = '#555';
     ctx.font = (11 * dpr) + 'px -apple-system, sans-serif';
     ctx.fillText(r.file.size <= WAV_HEADER_BYTES ? 'recording…' : 'loading…', 8 * dpr, h / 2 + 4 * dpr);
     return;
   }
-  const progress = name === play.name && entry.duration ? currentPos() / entry.duration : 0;
-  const barW = w / PEAK_COUNT;
-  for (let i = 0; i < PEAK_COUNT; i++) {
-    const bh = Math.max(1 * dpr, entry.peaks[i] * (h - 4 * dpr));
-    ctx.fillStyle = (i + 0.5) / PEAK_COUNT <= progress ? '#4caf50' : '#666';
-    ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 1 * dpr), bh);
+  const total = totalDuration(r.file);
+  const progress = name === play.name && total ? currentPos() / total : 0;
+  const barW = w / peaks.length;
+  for (let i = 0; i < peaks.length; i++) {
+    const bh = Math.max(1 * dpr, peaks[i] * (h - 4 * dpr));
+    ctx.fillStyle = (i + 0.5) / peaks.length <= progress ? '#4caf50' : '#666';
+    ctx.fillRect(i * barW, (h - bh) / 2, Math.max(1, barW - 2 * dpr), bh);
   }
 }
 
 function updateRowUi(name) {
   const r = rows[name];
   if (!r) return;
-  const entry = cache[key(r.file)];
-  const total = entry ? entry.duration : Math.max(0, r.file.size - WAV_HEADER_BYTES) / BYTES_PER_SEC;
-  r.playBtn.textContent = name === play.name && play.playing ? '❚❚' : '▶';
-  r.timeEl.textContent = (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(total);
+  r.playBtn.textContent = play.loading === name ? '…' : (name === play.name && play.playing ? '❚❚' : '▶');
+  r.timeEl.textContent = (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(totalDuration(r.file));
   drawWave(name);
 }
 
@@ -294,10 +350,10 @@ function stopSource() {
 }
 
 function tick() {
-  cancelAnimationFrame(play.raf);
+  clearTimeout(play.timer);
   if (!play.playing) return;
   updateRowUi(play.name);
-  play.raf = requestAnimationFrame(tick);
+  play.timer = setTimeout(tick, PLAYHEAD_REDRAW_MS);
 }
 
 function pause() {
@@ -308,7 +364,17 @@ function pause() {
 }
 
 async function playAt(f, fraction) {
-  const entry = await loadRecording(f);
+  let entry = audioCache[key(f)];
+  if (!entry) {
+    play.loading = f.name;
+    updateRowUi(f.name);
+    try {
+      entry = await loadAudio(f);
+    } finally {
+      play.loading = null;
+      updateRowUi(f.name);
+    }
+  }
   if (!entry.buffer) {
     entry.buffer = actx.createBuffer(1, Math.max(1, entry.samples.length), entry.sampleRate);
     const ch = entry.buffer.getChannelData(0);
@@ -348,14 +414,16 @@ const observer = new IntersectionObserver((entries) => {
     const r = rows[e.target.dataset.name];
     if (!r || r.file.size <= WAV_HEADER_BYTES) continue;
     observer.unobserve(e.target);
-    loadRecording(r.file).then(() => updateRowUi(r.file.name)).catch(() => {});
+    loadPeaks(r.file).then(() => updateRowUi(r.file.name)).catch(() => {});
   }
 });
 
 async function refreshFiles() {
   const files = await (await api('/files')).json();
   files.sort((a, b) => b.name.localeCompare(a.name));
-  const sig = files.map(key).join(',');
+  lastFiles = files;
+  updateDeleteAllInfo();
+  const sig = files.map((f) => key(f) + (f.recording ? '*' : '')).join(',');
   if (sig === listSignature) return;   // unchanged: keep DOM (and canvases) as is
   listSignature = sig;
 
@@ -390,6 +458,10 @@ async function refreshFiles() {
       const rect = r.canvas.getBoundingClientRect();
       playAt(f, (e.clientX - rect.left) / rect.width).catch(() => {});
     });
+    if (f.recording) {
+      row.querySelector('.danger').disabled = true;
+      row.querySelector('.danger').title = 'Still recording';
+    }
     row.querySelector('.danger').addEventListener('click', async () => {
       if (!confirm('Delete ' + displayName(f.name) + '?')) return;
       if (play.name === f.name) { stopSource(); play.playing = false; play.name = null; }
@@ -426,6 +498,66 @@ document.getElementById('threshold').addEventListener('change', async (e) => {
 document.getElementById('stealth').addEventListener('change', async (e) => {
   await api('/stealth', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (e.target.checked ? '1' : '0') });
 });
+// --- Settings panel ------------------------------------------------------
+const settingsEl = document.getElementById('settings');
+
+function deletableFiles() { return lastFiles.filter((f) => !f.recording); }
+function plural(n) { return n + ' recording' + (n === 1 ? '' : 's'); }
+
+function updateDeleteAllInfo() {
+  const files = deletableFiles();
+  const mb = files.reduce((sum, f) => sum + f.size, 0) / 1048576;
+  const inProgress = lastFiles.length - files.length;
+  document.getElementById('deleteAllInfo').textContent =
+    plural(files.length) + ', ' + mb.toFixed(1) + ' MB' +
+    (inProgress ? ' (the one being recorded right now is kept)' : '');
+  document.getElementById('deleteAllBtn').disabled = files.length === 0;
+}
+
+function showDeleteAllConfirm(show) {
+  document.getElementById('deleteAllConfirm').hidden = !show;
+  document.getElementById('deleteAllBtn').hidden = show;
+  if (show) {
+    document.getElementById('deleteAllCount').textContent = 'all ' + plural(deletableFiles().length);
+    document.getElementById('deleteAllResult').hidden = true;
+  }
+}
+
+function openSettings() {
+  showDeleteAllConfirm(false);
+  document.getElementById('deleteAllResult').hidden = true;
+  updateDeleteAllInfo();
+  settingsEl.hidden = false;
+}
+function closeSettings() { settingsEl.hidden = true; }
+
+document.getElementById('settingsBtn').addEventListener('click', openSettings);
+document.getElementById('settingsClose').addEventListener('click', closeSettings);
+settingsEl.addEventListener('click', (e) => { if (e.target === settingsEl) closeSettings(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !settingsEl.hidden) closeSettings(); });
+
+document.getElementById('deleteAllBtn').addEventListener('click', () => showDeleteAllConfirm(true));
+document.getElementById('deleteAllCancel').addEventListener('click', () => showDeleteAllConfirm(false));
+document.getElementById('deleteAllYes').addEventListener('click', async () => {
+  const yes = document.getElementById('deleteAllYes');
+  yes.disabled = true;
+  const result = document.getElementById('deleteAllResult');
+  try {
+    if (play.name) { stopSource(); play.playing = false; play.name = null; }
+    const r = await (await api('/deleteall', { method: 'POST' })).json();
+    result.textContent = 'Deleted ' + plural(r.deleted) + '.' +
+      (r.skipped ? ' The recording in progress was kept.' : '');
+  } catch (e) {
+    result.textContent = 'Deleting failed: ' + e.message;
+  } finally {
+    yes.disabled = false;
+    showDeleteAllConfirm(false);
+    result.hidden = false;
+    listSignature = '';
+    refreshFiles();
+  }
+});
+
 document.getElementById('pauseBtn').addEventListener('click', async () => {
   const paused = document.getElementById('pauseBtn').textContent === 'Resume';
   await api(paused ? '/resume' : '/pause', { method: 'POST' });
