@@ -4,7 +4,7 @@
 #include <time.h>
 
 #include "app_state.h"
-#include "secrets.h"
+#include "config.h"
 #include "wifi_setup.h"
 
 static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutMs) {
@@ -30,16 +30,7 @@ static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutM
 
 bool netConnectWifi(uint32_t timeoutMs) {
     String ssid, pass;
-    if (!wifiLoadCreds(ssid, pass)) {
-#ifdef WIFI_SSID
-        // one-time migration from the old compiled-in credentials
-        ssid = WIFI_SSID;
-        pass = WIFI_PASSWORD;
-        wifiSaveCreds(ssid, pass);
-#else
-        wifiPromptCreds(ssid, pass);
-#endif
-    }
+    if (!wifiLoadCreds(ssid, pass)) wifiPromptCreds(ssid, pass);
 
     bool connected = tryConnect(ssid, pass, timeoutMs);
     // Wrong password or a different network: let the user fix it on the
@@ -64,11 +55,7 @@ static bool clockIsSet(const struct tm& t) {
 }
 
 bool netSyncTime(uint32_t timeoutMs) {
-#ifdef TZ_INFO
-    configTzTime(TZ_INFO, NTP_SERVER);  // POSIX rule, so DST switches by itself
-#else
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
-#endif
+    configTzTime(TZ_INFO, NTP_SERVER);
 
     struct tm timeinfo;
     uint32_t start = millis();

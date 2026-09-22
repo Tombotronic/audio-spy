@@ -1,8 +1,7 @@
 brainstorms/
 closings/
 
-# firmware build artifacts / secrets
-firmware/audio-signal-monitor/secrets.h
+# firmware build artifacts
 firmware/build/
 *.bin
 *.elf

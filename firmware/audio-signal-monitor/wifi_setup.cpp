@@ -22,7 +22,7 @@ bool wifiLoadCreds(String& ssid, String& pass) {
     return ssid.length() > 0;
 }
 
-void wifiSaveCreds(const String& ssid, const String& pass) {
+static void saveCreds(const String& ssid, const String& pass) {
     s_prefs.begin("wifi", false);
     s_prefs.putString("ssid", ssid);
     s_prefs.putString("pass", pass);
@@ -139,7 +139,7 @@ static String pickSsid() {
 void wifiPromptCreds(String& ssid, String& pass) {
     ssid = pickSsid();
     pass = promptLine("WiFi password:", true, true, MAX_PASS_LEN);  // empty = open network
-    wifiSaveCreds(ssid, pass);
+    saveCreds(ssid, pass);
     Serial.printf("[wifi] saved credentials for SSID \"%s\"\n", ssid.c_str());
 }
 

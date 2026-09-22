@@ -41,9 +41,8 @@ returns constant/near-zero samples (no error, no crash — it just looks like
 silence forever). 3.2.0 is built on IDF v5.4.1, which is unaffected.
 Install with: `arduino-cli core install esp32:esp32@3.2.0`
 
-Copy `firmware/audio-signal-monitor/secrets.h.example` to `secrets.h` (gitignored)
-and set your time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
-automatically) before flashing.
+The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
+automatically) and NTP server are set in `firmware/audio-signal-monitor/config.h`.
 
 ## WiFi setup
 
@@ -52,10 +51,6 @@ scans and lists nearby networks (strongest first): press **1–6** to pick one, 
 **0** to type a hidden SSID (confirm with **ok**, the enter key), then type the
 password and press **ok** (leave it empty for an open network). They're saved in
 NVS flash (plaintext, never sent over the network) and survive reflashing.
-
-Upgrading from firmware that had `WIFI_SSID`/`WIFI_PASSWORD` in `secrets.h`: if
-those are still defined and nothing is saved yet, they're copied into NVS once,
-so the device reconnects without typing anything. Remove them afterwards.
 
 If connecting fails at boot (wrong password, different network), press **W**
 within 10 seconds to pick a network again; any other key or waiting it out

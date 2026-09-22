@@ -9,7 +9,6 @@
 
 // Returns false if nothing is saved yet.
 bool wifiLoadCreds(String& ssid, String& pass);
-void wifiSaveCreds(const String& ssid, const String& pass);
 
 // Blocking setup screens: scan and pick a network (or type a hidden one),
 // then type the password. Saves the result.
