@@ -77,27 +77,42 @@ function meterPct(rms) {
   return Math.max(0, Math.min(1, t)) * 100;
 }
 
-// Safari doesn't focus range inputs, so track dragging explicitly. After a
-// change, keep ignoring server values briefly: a status poll already in
-// flight would otherwise snap the slider back to the old value.
+// The slider must not snap back to a stale server value. Safari doesn't
+// focus range inputs, so dragging is tracked explicitly. After a change,
+// the new value stays "pending" and only /status responses requested after
+// the POST completed are trusted. The ESP32 serves one request at a time,
+// so right after page load the POST can queue behind waveform downloads
+// while older polls still return the old value.
 let sliderDragging = false;
-let sliderHoldUntil = 0;
+let pendingDb = null;        // value the user set, not yet confirmed
+let pendingPostedAt = 0;     // when its POST completed (0 = still in flight)
+let statusInFlight = false;
 
 async function refreshStatus() {
-  const s = await (await api('/status')).json();
+  if (statusInFlight) return;  // don't pile polls up behind a busy server
+  statusInFlight = true;
+  const requestedAt = Date.now();
+  let s;
+  try {
+    s = await (await api('/status')).json();
+  } finally {
+    statusInFlight = false;
+  }
+  const slider = document.getElementById('threshold');
+  if (pendingDb !== null && pendingPostedAt && requestedAt > pendingPostedAt) pendingDb = null;
+  const showServerValue = !sliderDragging && pendingDb === null;
+  const threshold = showServerValue ? s.threshold : dbToRms(Number(slider.value));
   document.getElementById('state').textContent =
     s.paused ? 'PAUSED' : (s.isRecording ? '● REC' : 'listening');
   const level = document.getElementById('level');
   level.style.width = meterPct(s.levelRms) + '%';
-  level.classList.toggle('above', s.levelRms >= s.threshold);
-  document.getElementById('thrMark').style.left = meterPct(s.threshold) + '%';
+  level.classList.toggle('above', s.levelRms >= threshold);
+  document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
   const freeMB = (s.freeBytes / 1048576).toFixed(0);
   const totalMB = (s.totalBytes / 1048576).toFixed(0);
   document.getElementById('space').textContent = freeMB + ' MB free of ' + totalMB + ' MB';
-  // don't yank the slider around while it's being dragged or just changed
-  const slider = document.getElementById('threshold');
-  if (!sliderDragging && Date.now() > sliderHoldUntil) {
+  if (showServerValue) {
     slider.value = Math.round(rmsToDb(s.threshold));
     document.getElementById('thresholdVal').textContent = slider.value + ' dB';
   }
@@ -363,19 +378,22 @@ window.addEventListener('resize', () => { for (const n in rows) drawWave(n); });
 
 const thresholdSlider = document.getElementById('threshold');
 thresholdSlider.addEventListener('pointerdown', () => { sliderDragging = true; });
-window.addEventListener('pointerup', () => {
-  if (sliderDragging) sliderHoldUntil = Date.now() + 1500;
-  sliderDragging = false;
-});
+window.addEventListener('pointerup', () => { sliderDragging = false; });
 document.getElementById('threshold').addEventListener('input', (e) => {
-  sliderHoldUntil = Date.now() + 1500;
+  pendingDb = Number(e.target.value);
+  pendingPostedAt = 0;
   document.getElementById('thresholdVal').textContent = e.target.value + ' dB';
 });
 document.getElementById('threshold').addEventListener('change', async (e) => {
-  const rms = dbToRms(Number(e.target.value)).toPrecision(4);
-  sliderHoldUntil = Date.now() + 1500;
-  await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + rms });
-  sliderHoldUntil = Date.now() + 1000;
+  const db = Number(e.target.value);
+  pendingDb = db;
+  pendingPostedAt = 0;
+  try {
+    await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + dbToRms(db).toPrecision(4) });
+  } finally {
+    // a newer change may have started meanwhile; only settle our own value
+    if (pendingDb === db) pendingPostedAt = Date.now();
+  }
 });
 document.getElementById('stealth').addEventListener('change', async (e) => {
   await api('/stealth', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (e.target.checked ? '1' : '0') });
