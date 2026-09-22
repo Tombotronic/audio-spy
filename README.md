@@ -56,7 +56,7 @@ Settings live in `/audio-signal-monitor/config.json` on the same card (created w
 
 ## Web interface
 
-Password-protected (basic HTTP auth) page served over the local WiFi network at the device's IP. User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
+Password-protected (basic HTTP auth) page served over the local WiFi network at the device's IP (press **I** on the device to see it). User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
@@ -67,6 +67,8 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 ## On-device display
 
 Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress while starting (about 20 seconds, mostly WiFi and NTP). Goes dark when stealth mode is enabled.
+
+Press **I** to show the device's IP address (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
 
 ## Status
 

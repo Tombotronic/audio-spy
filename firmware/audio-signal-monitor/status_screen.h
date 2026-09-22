@@ -10,3 +10,7 @@ void statusScreenBootStep(const char* step);
 // and running chunk RMS (both with a threshold marker), and free SD space;
 // blanks the screen entirely under stealth mode.
 void statusScreenUpdate();
+
+// Replaces the status screen with the device's IP address (where the web
+// UI is served) for a few seconds. Ignored under stealth mode.
+void statusScreenShowIp();

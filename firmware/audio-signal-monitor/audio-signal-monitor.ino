@@ -62,6 +62,15 @@ void setup() {
 void loop() {
     M5Cardputer.update();
     webServerHandle();
+
+    if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+        for (char c : M5Cardputer.Keyboard.keysState().word) {
+            if (c == 'i' || c == 'I') {
+                statusScreenShowIp();
+                break;
+            }
+        }
+    }
     statusScreenUpdate();
     delay(2);
 }

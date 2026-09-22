@@ -15,9 +15,12 @@
 // The dB readout shows the level averaged over this window and only updates
 // that often; at the meter's frame rate the number is unreadable.
 #define READOUT_INTERVAL_MS 250
+#define IP_SHOW_MS 5000
 
 static M5Canvas canvas(&M5Cardputer.Display);
 static bool s_wasStealth = false;
+static uint32_t s_ipShownAt = 0;
+static bool s_showingIp = false;
 
 void statusScreenInit() {
     M5Cardputer.Display.setRotation(1);
@@ -36,6 +39,29 @@ void statusScreenBootStep(const char* step) {
     canvas.setTextColor(LIGHTGREY, BLACK);
     canvas.setCursor(4, 40);
     canvas.print(step);
+    canvas.pushSprite(0, 0);
+}
+
+void statusScreenShowIp() {
+    s_showingIp = true;
+    s_ipShownAt = millis();
+}
+
+static void drawIp() {
+    char ip[16];
+    {
+        AppStateLock lock;
+        strncpy(ip, g_state.ipAddress, sizeof(ip));
+    }
+    canvas.fillSprite(BLACK);
+    canvas.setTextDatum(middle_center);
+    canvas.setTextSize(1);
+    canvas.setTextColor(LIGHTGREY, BLACK);
+    canvas.drawString("IP ADDRESS", canvas.width() / 2, canvas.height() / 2 - 24);
+    canvas.setTextSize(2);
+    canvas.setTextColor(WHITE, BLACK);
+    canvas.drawString(ip[0] ? ip : "not connected", canvas.width() / 2, canvas.height() / 2);
+    canvas.setTextDatum(top_left);
     canvas.pushSprite(0, 0);
 }
 
@@ -92,12 +118,21 @@ void statusScreenUpdate() {
             M5Cardputer.Display.sleep();
         }
         s_wasStealth = true;
+        s_showingIp = false;
         return;
     }
     if (s_wasStealth) {
         M5Cardputer.Display.wakeup();
         M5Cardputer.Display.setBrightness(128);
         s_wasStealth = false;
+    }
+
+    if (s_showingIp) {
+        if (now - s_ipShownAt < IP_SHOW_MS) {
+            drawIp();
+            return;
+        }
+        s_showingIp = false;
     }
 
     if (paused) levelRms = chunkRms = 0;
