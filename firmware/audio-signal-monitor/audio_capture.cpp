@@ -75,11 +75,18 @@ static void captureTask(void*) {
             // buffering margin, so no samples are dropped between reads.
             M5Cardputer.Mic.record(streamBuf, want, CHUNK_SAMPLE_RATE);
             tmp.write((const uint8_t*)streamBuf, want * sizeof(int16_t));
+            double blockSquares = 0.0;
             for (size_t i = 0; i < want; i++) {
                 double s = streamBuf[i];
-                sumSquares += s * s;
+                blockSquares += s * s;
             }
+            sumSquares += blockSquares;
             recorded += want;
+            {
+                AppStateLock lock;
+                g_state.levelRms = (float)(sqrt(blockSquares / want) / 32768.0);
+                g_state.chunkSoFarRms = (float)(sqrt(sumSquares / recorded) / 32768.0);
+            }
         }
         tmp.close();
 

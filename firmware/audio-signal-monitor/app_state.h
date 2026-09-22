@@ -17,6 +17,8 @@ struct AppState {
 
     bool isRecording = false;   // a merge run is currently open
     float liveRms = 0.0f;       // most recently measured chunk RMS
+    float levelRms = 0.0f;      // RMS of the latest ~32ms mic block (fast meter)
+    float chunkSoFarRms = 0.0f; // running RMS of the chunk being recorded
     uint64_t freeBytes = 0;
     uint64_t totalBytes = 0;
     char currentFile[64] = {0};
