@@ -75,15 +75,19 @@ void statusScreenUpdate() {
         freeBytes = g_state.freeBytes;
     }
 
+    // Stealth: backlight off and the display controller asleep (no redraws
+    // either, since this returns early); woken again when stealth ends.
     if (stealth) {
         if (!s_wasStealth) {
             M5Cardputer.Display.fillScreen(BLACK);
             M5Cardputer.Display.setBrightness(0);
+            M5Cardputer.Display.sleep();
         }
         s_wasStealth = true;
         return;
     }
     if (s_wasStealth) {
+        M5Cardputer.Display.wakeup();
         M5Cardputer.Display.setBrightness(128);
         s_wasStealth = false;
     }
