@@ -24,6 +24,18 @@ void statusScreenInit() {
     canvas.setTextDatum(top_left);
 }
 
+void statusScreenBootStep(const char* step) {
+    canvas.fillSprite(BLACK);
+    canvas.setTextSize(2);
+    canvas.setTextColor(WHITE, BLACK);
+    canvas.setCursor(4, 4);
+    canvas.print("Booting...");
+    canvas.setTextColor(LIGHTGREY, BLACK);
+    canvas.setCursor(4, 40);
+    canvas.print(step);
+    canvas.pushSprite(0, 0);
+}
+
 static float toDb(float rms) {
     return rms > 0 ? 20.0f * log10f(rms) : METER_MIN_DB;
 }

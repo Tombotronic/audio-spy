@@ -16,8 +16,10 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   body { font-family: -apple-system, sans-serif; max-width: 640px; margin: 0 auto; padding: 16px; background: #111; color: #eee; }
   h1 { font-size: 1.3em; }
   .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
-  .bar { flex: 1; height: 10px; background: #333; border-radius: 5px; overflow: hidden; }
-  .bar > div { height: 100%; background: #4caf50; width: 0%; }
+  .bar { flex: 1; height: 14px; background: #333; border-radius: 5px; overflow: hidden; position: relative; }
+  .bar > #level { height: 100%; background: #2e6b31; width: 0%; transition: width 0.15s linear; }
+  .bar > #level.above { background: #4caf50; }
+  .bar > #thrMark { position: absolute; top: 0; bottom: 0; width: 2px; background: #ffd400; }
   button { background: #333; color: #eee; border: 1px solid #555; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
   button:hover { background: #444; }
   button.danger { border-color: #a33; color: #f88; }
@@ -37,14 +39,14 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="row">
     <strong id="state">-</strong>
-    <div class="bar"><div id="level"></div></div>
+    <div class="bar"><div id="level"></div><div id="thrMark"></div></div>
     <span id="ip" class="muted"></span>
   </div>
   <div class="row muted"><span id="space"></span></div>
 
   <div class="row">
     <label for="threshold">Threshold</label>
-    <input type="range" id="threshold" min="0" max="0.05" step="0.0005">
+    <input type="range" id="threshold" min="-75" max="-30" step="1">
     <span id="thresholdVal" class="muted"></span>
   </div>
 
@@ -64,17 +66,41 @@ async function api(path, opts) {
   return res;
 }
 
+// Threshold is stored as linear RMS (0..1) on the device; the UI works in dBFS.
+function rmsToDb(rms) { return rms > 0 ? 20 * Math.log10(rms) : -100; }
+function dbToRms(db) { return Math.pow(10, db / 20); }
+
+// Same scale as the device's status screen.
+const METER_MIN_DB = -70, METER_MAX_DB = -10;
+function meterPct(rms) {
+  const t = (rmsToDb(rms) - METER_MIN_DB) / (METER_MAX_DB - METER_MIN_DB);
+  return Math.max(0, Math.min(1, t)) * 100;
+}
+
+// Safari doesn't focus range inputs, so track dragging explicitly. After a
+// change, keep ignoring server values briefly: a status poll already in
+// flight would otherwise snap the slider back to the old value.
+let sliderDragging = false;
+let sliderHoldUntil = 0;
+
 async function refreshStatus() {
   const s = await (await api('/status')).json();
   document.getElementById('state').textContent =
     s.paused ? 'PAUSED' : (s.isRecording ? '● REC' : 'listening');
-  document.getElementById('level').style.width = Math.min(100, s.liveRms / 0.05 * 100) + '%';
+  const level = document.getElementById('level');
+  level.style.width = meterPct(s.levelRms) + '%';
+  level.classList.toggle('above', s.levelRms >= s.threshold);
+  document.getElementById('thrMark').style.left = meterPct(s.threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
   const freeMB = (s.freeBytes / 1048576).toFixed(0);
   const totalMB = (s.totalBytes / 1048576).toFixed(0);
   document.getElementById('space').textContent = freeMB + ' MB free of ' + totalMB + ' MB';
-  document.getElementById('threshold').value = s.threshold;
-  document.getElementById('thresholdVal').textContent = s.threshold.toFixed(4);
+  // don't yank the slider around while it's being dragged or just changed
+  const slider = document.getElementById('threshold');
+  if (!sliderDragging && Date.now() > sliderHoldUntil) {
+    slider.value = Math.round(rmsToDb(s.threshold));
+    document.getElementById('thresholdVal').textContent = slider.value + ' dB';
+  }
   document.getElementById('stealth').checked = s.stealthMode;
   document.getElementById('pauseBtn').textContent = s.paused ? 'Resume' : 'Pause';
 }
@@ -335,8 +361,21 @@ async function refreshFiles() {
 
 window.addEventListener('resize', () => { for (const n in rows) drawWave(n); });
 
+const thresholdSlider = document.getElementById('threshold');
+thresholdSlider.addEventListener('pointerdown', () => { sliderDragging = true; });
+window.addEventListener('pointerup', () => {
+  if (sliderDragging) sliderHoldUntil = Date.now() + 1500;
+  sliderDragging = false;
+});
+document.getElementById('threshold').addEventListener('input', (e) => {
+  sliderHoldUntil = Date.now() + 1500;
+  document.getElementById('thresholdVal').textContent = e.target.value + ' dB';
+});
 document.getElementById('threshold').addEventListener('change', async (e) => {
-  await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + e.target.value });
+  const rms = dbToRms(Number(e.target.value)).toPrecision(4);
+  sliderHoldUntil = Date.now() + 1500;
+  await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + rms });
+  sliderHoldUntil = Date.now() + 1000;
 });
 document.getElementById('stealth').addEventListener('change', async (e) => {
   await api('/stealth', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (e.target.checked ? '1' : '0') });
@@ -352,7 +391,7 @@ document.getElementById('forceKeepBtn').addEventListener('click', async () => {
 
 refreshStatus();
 refreshFiles();
-setInterval(refreshStatus, 1500);
+setInterval(refreshStatus, 500);
 setInterval(refreshFiles, 10000);
 </script>
 </body>

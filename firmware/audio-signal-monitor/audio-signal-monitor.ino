@@ -21,7 +21,9 @@ void setup() {
     appStateInit();
     statusScreenInit();
 
+    statusScreenBootStep("SD card");
     if (!storageInit()) {
+        statusScreenBootStep("SD card missing!");
         Serial.println("[boot] halting: SD card required");
         while (true) delay(1000);
     }
@@ -36,7 +38,9 @@ void setup() {
     }
     Serial.printf("[boot] config loaded: threshold=%.4f stealth=%d\n", g_config.threshold, g_config.stealthMode);
 
+    statusScreenBootStep("WiFi");
     netConnectWifi();
+    statusScreenBootStep("NTP time");
     netSyncTime();
     webServerStart();
 
@@ -46,6 +50,7 @@ void setup() {
         Serial.println("[boot] halting: failed to set up audio capture");
         while (true) delay(1000);
     }
+    statusScreenBootStep("Mic");
     audioCaptureStart();
     chunkPipelineStart();
 

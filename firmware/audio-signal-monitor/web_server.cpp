@@ -108,6 +108,7 @@ static void handleStatus() {
         doc["isRecording"] = g_state.isRecording;
         doc["paused"] = g_state.paused;
         doc["liveRms"] = g_state.liveRms;
+        doc["levelRms"] = g_state.levelRms;
         doc["threshold"] = g_state.thresholdRms;
         doc["stealthMode"] = g_state.stealthMode;
         doc["freeBytes"] = g_state.freeBytes;
