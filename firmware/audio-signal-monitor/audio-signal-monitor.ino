@@ -5,6 +5,7 @@
 #include "chunk_pipeline.h"
 #include "config.h"
 #include "net.h"
+#include "status_screen.h"
 #include "storage.h"
 #include "web_server.h"
 
@@ -18,6 +19,7 @@ void setup() {
     cfg.internal_spk = false;  // physical speaker is never used; mic/speaker share the codec
     M5Cardputer.begin(cfg);
     appStateInit();
+    statusScreenInit();
 
     if (!storageInit()) {
         Serial.println("[boot] halting: SD card required");
@@ -51,5 +53,6 @@ void setup() {
 void loop() {
     M5Cardputer.update();
     webServerHandle();
+    statusScreenUpdate();
     delay(2);
 }
