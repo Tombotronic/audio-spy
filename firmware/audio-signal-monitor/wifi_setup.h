@@ -10,6 +10,9 @@
 // Returns false if nothing is saved yet.
 bool wifiLoadCreds(String& ssid, String& pass);
 
+// Erases the saved network; the next boot starts WiFi setup.
+void wifiForgetCreds();
+
 // Blocking setup screens: scan and pick a network (or type a hidden one),
 // then type the password. Saves the result.
 void wifiPromptCreds(String& ssid, String& pass);

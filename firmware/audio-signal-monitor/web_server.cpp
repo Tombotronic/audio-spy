@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <SD.h>
 #include <WebServer.h>
+#include <WiFi.h>
 #include <math.h>
 #include <vector>
 
@@ -11,6 +12,7 @@
 #include "icon_png.h"
 #include "storage.h"
 #include "web_ui.h"
+#include "wifi_setup.h"
 
 extern Config g_config;
 
@@ -220,6 +222,7 @@ static void handleStatus() {
         doc["freeBytes"] = g_state.freeBytes;
         doc["totalBytes"] = g_state.totalBytes;
         doc["ip"] = g_state.ipAddress;
+        doc["ssid"] = WiFi.SSID();
         doc["wifiConnected"] = g_state.wifiConnected;
         doc["timeSynced"] = g_state.timeSynced;
         doc["uptimeS"] = millis() / 1000;
@@ -286,6 +289,17 @@ static void handleSetBypass() {
     server.send(200, "text/plain", "ok");
 }
 
+// Clears the saved network and reboots into WiFi setup on the device.
+// An interrupted recording is repaired at boot like after a power cut.
+static void handleForgetWifi() {
+    if (!requireAuth()) return;
+    wifiForgetCreds();
+    server.send(200, "text/plain", "ok");
+    Serial.println("[web] WiFi credentials cleared, restarting");
+    delay(500);  // let the response go out
+    ESP.restart();
+}
+
 void webServerStart() {
     server.on("/", HTTP_GET, handleIndex);
     server.on("/icon.png", HTTP_GET, handleIcon);
@@ -302,6 +316,7 @@ void webServerStart() {
     server.on("/pause", HTTP_POST, []() { setPaused(true); });
     server.on("/resume", HTTP_POST, []() { setPaused(false); });
     server.on("/bypass", HTTP_POST, handleSetBypass);
+    server.on("/forgetwifi", HTTP_POST, handleForgetWifi);
     server.begin();
     Serial.println("[web] server started on port 80");
 }

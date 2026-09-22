@@ -200,6 +200,18 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
         <div><strong>IP address</strong></div>
         <span id="ip" class="muted"></span>
       </div>
+      <div class="setting">
+        <div><strong>WiFi</strong><br><span class="muted" id="ssid"></span></div>
+        <button class="danger" id="forgetWifiBtn">Forget…</button>
+      </div>
+      <div id="forgetWifiConfirm" class="confirm" hidden>
+        <p>Forget this network and restart? Pick a new one on the device's keyboard. Until then it records offline and this page can't be reached.</p>
+        <div class="row">
+          <button id="forgetWifiCancel">Cancel</button>
+          <button class="danger solid" id="forgetWifiYes">Yes, forget WiFi</button>
+        </div>
+      </div>
+      <p id="forgetWifiResult" class="muted" hidden></p>
       <div class="setting storage">
         <div>
           <div class="storage-head"><strong>Storage</strong><span><strong id="spaceFree"></strong> <span class="muted">free</span></span></div>
@@ -289,6 +301,7 @@ async function refreshStatus() {
   level.classList.toggle('above', s.levelRms >= threshold);
   document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
+  document.getElementById('ssid').textContent = s.ssid || '';
   showStorage(s.freeBytes, s.totalBytes);
   if (showServerValue) {
     slider.value = Math.round(rmsToDb(s.threshold));
@@ -676,7 +689,14 @@ function showDeleteAllConfirm(show) {
   }
 }
 
+function showForgetWifiConfirm(show) {
+  document.getElementById('forgetWifiConfirm').hidden = !show;
+  document.getElementById('forgetWifiBtn').hidden = show;
+}
+
 function openSettings() {
+  showForgetWifiConfirm(false);
+  document.getElementById('forgetWifiResult').hidden = true;
   showDeleteAllConfirm(false);
   document.getElementById('deleteAllResult').hidden = true;
   updateDeleteAllInfo();
@@ -733,6 +753,24 @@ document.getElementById('deleteAllYes').addEventListener('click', async () => {
     result.hidden = false;
     listSignature = '';
     refreshFiles();
+  }
+});
+
+document.getElementById('forgetWifiBtn').addEventListener('click', () => showForgetWifiConfirm(true));
+document.getElementById('forgetWifiCancel').addEventListener('click', () => showForgetWifiConfirm(false));
+document.getElementById('forgetWifiYes').addEventListener('click', async () => {
+  const yes = document.getElementById('forgetWifiYes');
+  yes.disabled = true;
+  const result = document.getElementById('forgetWifiResult');
+  try {
+    await api('/forgetwifi', { method: 'POST' });
+    result.textContent = 'WiFi forgotten. The device is restarting; set up the new network on its keyboard.';
+  } catch (e) {
+    result.textContent = 'Forgetting WiFi failed: ' + e.message;
+  } finally {
+    yes.disabled = false;
+    showForgetWifiConfirm(false);
+    result.hidden = false;
   }
 });
 

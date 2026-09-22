@@ -56,6 +56,10 @@ If connecting fails at boot (wrong password, different network), press **W**
 within 10 seconds to pick a network again; any other key or waiting it out
 boots offline and keeps recording.
 
+To switch networks while it's connected, use **Settings → WiFi → Forget…** in
+the web UI. It clears the saved network and restarts into the setup screen. A
+recording in progress is repaired on boot, the same as after a power cut.
+
 ## Audio format
 
 16kHz / 16-bit / mono WAV.

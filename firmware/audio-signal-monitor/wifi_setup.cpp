@@ -29,6 +29,12 @@ static void saveCreds(const String& ssid, const String& pass) {
     s_prefs.end();
 }
 
+void wifiForgetCreds() {
+    s_prefs.begin("wifi", false);
+    s_prefs.clear();
+    s_prefs.end();
+}
+
 static void clearScreen() {
     auto& d = M5Cardputer.Display;
     d.fillScreen(BLACK);
