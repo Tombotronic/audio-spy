@@ -49,8 +49,13 @@ automatically) before flashing.
 
 WiFi credentials are entered on the device, not compiled in. On first boot it
 scans and lists nearby networks (strongest first): press **1–6** to pick one, or
-**0** to type a hidden SSID, then type the password and press **ok**. They're
-saved in NVS flash (plaintext, never sent over the network).
+**0** to type a hidden SSID (confirm with **ok**, the enter key), then type the
+password and press **ok** (leave it empty for an open network). They're saved in
+NVS flash (plaintext, never sent over the network) and survive reflashing.
+
+Upgrading from firmware that had `WIFI_SSID`/`WIFI_PASSWORD` in `secrets.h`: if
+those are still defined and nothing is saved yet, they're copied into NVS once,
+so the device reconnects without typing anything. Remove them afterwards.
 
 If connecting fails at boot (wrong password, different network), press **W**
 within 10 seconds to pick a network again; any other key or waiting it out
@@ -73,15 +78,14 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
-- "Bypass Threshold" is greyed out while paused
-- "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot)
+- "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
 - Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; off again after a reboot) and "delete all recordings" with confirmation
 
 Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Monitor" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
 ## On-device display
 
-Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress while starting (about 20 seconds, mostly WiFi and NTP). Goes dark when stealth mode is enabled.
+Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress while starting (about 20 seconds, mostly WiFi and NTP; 10 seconds more if WiFi fails, see [WiFi setup](#wifi-setup)). Goes dark when stealth mode is enabled.
 
 Press **I** to show the device's IP address (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
 
