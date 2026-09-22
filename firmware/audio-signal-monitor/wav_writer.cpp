@@ -66,6 +66,13 @@ void WavWriter::writeHeader(uint32_t dataBytes) {
     _file.write((const uint8_t*)&header, sizeof(header));
 }
 
+void WavWriter::checkpoint() {
+    if (!_open) return;
+    writeHeader(_dataBytesWritten);
+    _file.seek(sizeof(WavHeader) + _dataBytesWritten);
+    _file.flush();
+}
+
 void WavWriter::endRun() {
     if (!_open) return;
     writeHeader(_dataBytesWritten);

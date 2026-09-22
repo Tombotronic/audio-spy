@@ -118,8 +118,9 @@ async function refreshStatus() {
   if (pendingDb !== null && pendingPostedAt && requestedAt > pendingPostedAt) pendingDb = null;
   const showServerValue = !sliderDragging && pendingDb === null;
   const threshold = showServerValue ? s.threshold : dbToRms(Number(slider.value));
-  document.getElementById('state').textContent =
-    s.paused ? 'PAUSED' : (s.isRecording ? '● REC' : 'listening');
+  const stateEl = document.getElementById('state');
+  stateEl.textContent = s.paused ? 'PAUSED' : (s.isRecording ? '● REC' : 'listening');
+  stateEl.style.color = s.paused ? '#ffd400' : (s.isRecording ? '#ff4040' : '#4caf50');
   const level = document.getElementById('level');
   level.style.width = meterPct(s.levelRms) + '%';
   level.classList.toggle('above', s.levelRms >= threshold);

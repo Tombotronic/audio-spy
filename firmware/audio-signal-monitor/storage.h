@@ -23,3 +23,7 @@ uint64_t storageTotalBytes();
 // Deletes the oldest *.wav files in RECORDINGS_DIR until free space is
 // back above LOW_SPACE_MARGIN_BYTES, or there's nothing left to delete.
 void storageEnforceRollingLimit();
+
+// Deletes *.wav files in RECORDINGS_DIR that hold no audio (header only or
+// less), e.g. from a run cut off by a reboot before its first checkpoint.
+void storageRemoveEmptyRecordings();

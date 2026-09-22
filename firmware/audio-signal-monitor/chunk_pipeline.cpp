@@ -60,6 +60,7 @@ static void applyDecision(uint8_t slotIndex, bool effectiveKeep) {
             File src = SD.open(path, FILE_READ);
             if (src) {
                 s_writer.appendFromFile(src, CHUNK_BYTES);
+                s_writer.checkpoint();
                 src.close();
             }
         }

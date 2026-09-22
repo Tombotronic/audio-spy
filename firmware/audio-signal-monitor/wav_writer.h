@@ -19,6 +19,10 @@ public:
     // current run (used to move a chunk's SD-backed temp buffer into the
     // merged WAV without ever holding the whole chunk in RAM).
     void appendFromFile(File& source, size_t byteCount);
+    // Rewrites the header with the current size and flushes, so a reboot
+    // mid-run leaves a valid WAV (FAT only records the file size on
+    // flush/close; without this an interrupted run ends up as 0 bytes).
+    void checkpoint();
     void endRun();
     bool isOpen() const { return _open; }
     const String& path() const { return _path; }
