@@ -6,6 +6,7 @@
 #include "config.h"
 #include "net.h"
 #include "storage.h"
+#include "web_server.h"
 
 Config g_config;
 
@@ -33,6 +34,7 @@ void setup() {
 
     netConnectWifi();
     netSyncTime();
+    webServerStart();
 
     Serial.println("[boot] bootstrap complete");
 
@@ -48,5 +50,6 @@ void setup() {
 
 void loop() {
     M5Cardputer.update();
-    delay(10);
+    webServerHandle();
+    delay(2);
 }

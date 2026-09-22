@@ -8,10 +8,19 @@
 
 bool netConnectWifi(uint32_t timeoutMs) {
     WiFi.mode(WIFI_STA);
+    WiFi.disconnect();
+    delay(100);
+    Serial.printf("[net] connecting to SSID \"%s\"\n", WIFI_SSID);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
 
     uint32_t start = millis();
+    wl_status_t lastStatus = (wl_status_t)255;
     while (WiFi.status() != WL_CONNECTED && millis() - start < timeoutMs) {
+        wl_status_t s = WiFi.status();
+        if (s != lastStatus) {
+            Serial.printf("[net] status=%d\n", (int)s);
+            lastStatus = s;
+        }
         delay(250);
     }
 
