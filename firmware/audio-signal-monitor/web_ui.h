@@ -159,6 +159,14 @@ let loadChain = Promise.resolve();
 let listSignature = '';
 
 function key(f) { return f.name + '|' + f.size; }
+
+// "2026-09-22_20-37-06.wav" -> "22.09.2026 20:37:06". Files recorded
+// before NTP sync (e.g. "unsynced-000003.wav") just lose the extension.
+function displayName(name) {
+  const m = name.match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})\.wav$/);
+  if (!m) return name.replace(/\.wav$/, '');
+  return m[3] + '.' + m[2] + '.' + m[1] + ' ' + m[4] + ':' + m[5] + ':' + m[6];
+}
 function fmtTime(s) {
   s = isFinite(s) ? Math.max(0, Math.floor(s)) : 0;
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
@@ -358,7 +366,7 @@ async function refreshFiles() {
     row.dataset.name = f.name;
     const sizeMB = (f.size / 1048576).toFixed(2);
     row.innerHTML =
-      '<div class="head"><span class="name">' + f.name + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
+      '<div class="head"><span class="name">' + displayName(f.name) + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
       '<a href="/download?name=' + encodeURIComponent(f.name) + '"><button>Download</button></a>' +
       '<button class="danger">Delete</button></div>' +
       '<div class="player"><button class="play">▶</button><canvas></canvas><span class="time muted"></span></div>';
@@ -379,7 +387,7 @@ async function refreshFiles() {
       playAt(f, (e.clientX - rect.left) / rect.width).catch(() => {});
     });
     row.querySelector('.danger').addEventListener('click', async () => {
-      if (!confirm('Delete ' + f.name + '?')) return;
+      if (!confirm('Delete ' + displayName(f.name) + '?')) return;
       if (play.name === f.name) { stopSource(); play.playing = false; play.name = null; }
       await api('/delete?name=' + encodeURIComponent(f.name), { method: 'POST' });
       refreshFiles();
