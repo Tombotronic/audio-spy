@@ -12,7 +12,8 @@
 //   POST /stealth    on=0|1   set + persist stealth mode
 //   POST /pause                pause the record-analyze-decide loop
 //   POST /resume                resume it
-//   POST /forcekeep             force-keep the in-progress chunk
+//   POST /forcekeep             force-keep the in-progress chunk (one-shot)
+//   POST /bypass     on=0|1   keep everything regardless of threshold (not persisted)
 void webServerStart();
 
 // Must be called from the main loop() to process incoming requests

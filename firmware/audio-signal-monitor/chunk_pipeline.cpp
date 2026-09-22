@@ -24,6 +24,11 @@ static float currentThreshold() {
     return g_state.thresholdRms;
 }
 
+static bool bypassThreshold() {
+    AppStateLock lock;
+    return g_state.bypassThreshold;
+}
+
 static void publishLiveState(float rms, bool recording) {
     AppStateLock lock;
     g_state.liveRms = rms;
@@ -187,7 +192,7 @@ static void pipelineTask(void*) {
         }
 
         float threshold = currentThreshold();
-        bool force = consumeForceKeep();
+        bool force = consumeForceKeep() || bypassThreshold();
         PendingChunk current;
         current.valid = true;
         current.slotIndex = chunk.slotIndex;

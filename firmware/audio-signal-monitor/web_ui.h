@@ -1,7 +1,8 @@
 #pragma once
 
 // Single-page UI: file list + playback/download/delete, threshold slider
-// with live level readout, pause/resume, force-keep, and a settings panel
+// with live level readout, pause/resume, a bypass-threshold switch (keep
+// everything while on), and a settings panel
 // (stealth toggle, delete all recordings).
 // Served as one static page; all interactivity is plain fetch() calls
 // against the JSON/POST routes in web_server.cpp. Basic Auth is handled
@@ -65,6 +66,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   button.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
   button:disabled { opacity: 0.4; cursor: default; }
   #settingsBtn { font-size: 1.2em; padding: 4px 10px; }
+  #bypassBtn.active { background: var(--accent); border-color: var(--accent); color: #000; }
   #state.st-listening { color: var(--ok); }
   #state.st-rec { color: var(--rec); }
   #state.st-paused { color: var(--accent); }
@@ -145,7 +147,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
   <div class="row">
     <button id="pauseBtn">Pause</button>
-    <button id="forceKeepBtn">Force-keep chunk</button>
+    <button id="bypassBtn" title="While on, everything is recorded regardless of the threshold. Off again after a device reboot.">Bypass Threshold</button>
   </div>
 
   <h2>Recordings</h2>
@@ -243,6 +245,7 @@ async function refreshStatus() {
   }
   document.getElementById('stealth').checked = s.stealthMode;
   document.getElementById('pauseBtn').textContent = s.paused ? 'Resume' : 'Pause';
+  showBypass(s.bypassThreshold);
 }
 
 // --- Recordings: waveform + playback -------------------------------------
@@ -649,8 +652,17 @@ document.getElementById('pauseBtn').addEventListener('click', async () => {
   await api(paused ? '/resume' : '/pause', { method: 'POST' });
   refreshStatus();
 });
-document.getElementById('forceKeepBtn').addEventListener('click', async () => {
-  await api('/forcekeep', { method: 'POST' });
+function showBypass(on) {
+  const btn = document.getElementById('bypassBtn');
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', on);
+  btn.textContent = on ? 'Bypass ON' : 'Bypass Threshold';
+}
+document.getElementById('bypassBtn').addEventListener('click', async () => {
+  const on = !document.getElementById('bypassBtn').classList.contains('active');
+  showBypass(on);
+  await api('/bypass', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (on ? '1' : '0') });
+  refreshStatus();
 });
 
 for (let db = -50; db <= -10; db += 10) {

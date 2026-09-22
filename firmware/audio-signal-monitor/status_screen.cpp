@@ -68,7 +68,7 @@ void statusScreenUpdate() {
     if (now - lastUpdate < UPDATE_INTERVAL_MS) return;
     lastUpdate = now;
 
-    bool stealth, paused, isRecording;
+    bool stealth, paused, isRecording, bypass;
     float levelRms, chunkRms, threshold;
     uint64_t freeBytes;
     {
@@ -79,6 +79,7 @@ void statusScreenUpdate() {
         levelRms = g_state.levelRms;
         chunkRms = g_state.chunkLoudestSecondRms;
         threshold = g_state.thresholdRms;
+        bypass = g_state.bypassThreshold;
         freeBytes = g_state.freeBytes;
     }
 
@@ -181,7 +182,8 @@ void statusScreenUpdate() {
     // Footer: threshold value and free space
     canvas.setTextColor(YELLOW, BLACK);
     canvas.setCursor(x0, canvas.height() - 10);
-    canvas.printf("thr %.0f dB", toDb(threshold));
+    if (bypass) canvas.print("BYPASS: keeping all");
+    else canvas.printf("thr %.0f dB", toDb(threshold));
     canvas.setTextColor(LIGHTGREY, BLACK);
     canvas.setTextDatum(top_right);
     canvas.drawString(String((uint32_t)(freeBytes / (1024ULL * 1024 * 1024))) + " GB free", x0 + w, canvas.height() - 10);

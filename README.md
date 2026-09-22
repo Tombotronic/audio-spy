@@ -61,7 +61,7 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording
-- Force-keep the current in-progress chunk
+- "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot)
 - Settings panel: stealth mode (blanks the on-device screen; off again after a reboot) and "delete all recordings" with confirmation
 
 ## On-device display

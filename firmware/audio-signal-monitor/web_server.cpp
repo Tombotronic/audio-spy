@@ -200,6 +200,7 @@ static void handleStatus() {
         doc["levelRms"] = g_state.levelRms;
         doc["threshold"] = g_state.thresholdRms;
         doc["stealthMode"] = g_state.stealthMode;
+        doc["bypassThreshold"] = g_state.bypassThreshold;
         doc["freeBytes"] = g_state.freeBytes;
         doc["totalBytes"] = g_state.totalBytes;
         doc["ip"] = g_state.ipAddress;
@@ -259,6 +260,14 @@ static void handleResume() {
     server.send(200, "text/plain", "ok");
 }
 
+static void handleSetBypass() {
+    if (!requireAuth()) return;
+    bool on = server.hasArg("on") && server.arg("on") == "1";
+    AppStateLock lock;
+    g_state.bypassThreshold = on;
+    server.send(200, "text/plain", "ok");
+}
+
 static void handleForceKeep() {
     if (!requireAuth()) return;
     AppStateLock lock;
@@ -280,6 +289,7 @@ void webServerStart() {
     server.on("/pause", HTTP_POST, handlePause);
     server.on("/resume", HTTP_POST, handleResume);
     server.on("/forcekeep", HTTP_POST, handleForceKeep);
+    server.on("/bypass", HTTP_POST, handleSetBypass);
     server.begin();
     Serial.println("[web] server started on port 80");
 }

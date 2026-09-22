@@ -14,6 +14,7 @@ struct AppState {
     bool stealthMode = false;
     bool paused = false;
     bool forceKeepRequested = false;
+    bool bypassThreshold = false;  // keep everything while on; not persisted
 
     bool isRecording = false;   // a merge run is currently open
     float liveRms = 0.0f;       // loudest second of the most recent chunk
