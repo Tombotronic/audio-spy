@@ -10,8 +10,22 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 
 ## Hardware
 
-- M5Stack Cardputer Adv (built-in SD slot)
-- Arduino framework + M5Unified library
+- M5Stack Cardputer Adv (built-in SD slot; this unit has no PSRAM)
+- Arduino framework + M5Unified/M5Cardputer library
+
+## Build
+
+Uses `arduino-cli` with board FQBN `esp32:esp32:m5stack_cardputer`.
+
+**Must use `esp32:esp32` core version 3.2.0, not newer.** Core versions built on
+ESP-IDF v5.5.x (3.3.x and later) have a known regression where MCLK doesn't
+reach the Cardputer ADV's ES8311 mic codec, so `M5.Mic.record()` silently
+returns constant/near-zero samples (no error, no crash — it just looks like
+silence forever). 3.2.0 is built on IDF v5.4.1, which is unaffected.
+Install with: `arduino-cli core install esp32:esp32@3.2.0`
+
+Copy `firmware/audio-signal-monitor/secrets.h.example` to `secrets.h` (gitignored)
+and fill in your WiFi credentials before flashing.
 
 ## Audio format
 

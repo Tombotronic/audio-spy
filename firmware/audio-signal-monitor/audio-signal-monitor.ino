@@ -1,6 +1,8 @@
 #include <M5Cardputer.h>
 
 #include "app_state.h"
+#include "audio_capture.h"
+#include "chunk_pipeline.h"
 #include "config.h"
 #include "net.h"
 #include "storage.h"
@@ -11,7 +13,9 @@ void setup() {
     Serial.begin(115200);
     delay(200);
 
-    M5Cardputer.begin();
+    auto cfg = M5.config();
+    cfg.internal_spk = false;  // physical speaker is never used; mic/speaker share the codec
+    M5Cardputer.begin(cfg);
     appStateInit();
 
     if (!storageInit()) {
@@ -31,6 +35,15 @@ void setup() {
     netSyncTime();
 
     Serial.println("[boot] bootstrap complete");
+
+    if (!audioCaptureInit()) {
+        Serial.println("[boot] halting: failed to set up audio capture");
+        while (true) delay(1000);
+    }
+    audioCaptureStart();
+    chunkPipelineStart();
+
+    Serial.println("[boot] recording pipeline started");
 }
 
 void loop() {
