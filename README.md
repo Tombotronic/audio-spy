@@ -15,11 +15,11 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 
 ## Build
 
-Uses `arduino-cli` with board FQBN `esp32:esp32:m5stack_cardputer:CDCOnBoot=default`:
+Uses `arduino-cli` with board FQBN `esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB`:
 
 ```
-arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default firmware/audio-signal-monitor
-arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default firmware/audio-signal-monitor
+arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-signal-monitor
+arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-signal-monitor
 ```
 
 **Keep USB CDC On Boot disabled** (`CDCOnBoot=default`; the board's default is
@@ -27,6 +27,10 @@ enabled). With it enabled, `Serial` goes over native USB, and after an upload
 reset the port can look "open" to the chip while nobody reads it. Every
 `Serial.print` then blocks and the device hangs on a black screen until it's
 power-cycled. With it disabled, `Serial` goes to UART0 (not visible over USB).
+
+The Cardputer's ESP32-S3 has 8MB of flash; the board default only uses a 4MB
+layout (1.2MB app). `FlashSize=8M,PartitionScheme=default_8MB` gives a 3MB app
+partition.
 
 **Must use `esp32:esp32` core version 3.2.0, not newer.** Core versions built on
 ESP-IDF v5.5.x (3.3.x and later) have a known regression where MCLK doesn't
