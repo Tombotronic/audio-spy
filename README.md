@@ -7,6 +7,15 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 > StGB). Only use this device where you're allowed to record, and inform the
 > people around it. You are responsible for how you use it.
 
+## Install
+
+Download the firmware from the [latest release](https://github.com/Tombotronic/audio-spy/releases/latest):
+
+- **First install** (or the Cardputer runs other firmware): `audio-spy-vX.Y.Z-full.bin`, flashed at `0x0`. It erases the saved WiFi network.
+- **Update** (it already runs Audio Spy): `audio-spy-vX.Y.Z-update.bin`, flashed at `0x10000`. It keeps the WiFi network.
+
+Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js/) (Chrome/Edge) or with `esptool.py`. The release notes have step-by-step instructions. Then insert a FAT32 SD card and set up [WiFi](#wifi-setup) on the device. To build it yourself instead, see [Build](#build).
+
 ## How it works
 
 - Audio is captured continuously in ~10 second chunks, measuring the RMS level of every second.
@@ -72,8 +81,9 @@ To update and keep it, flash `audio-spy.ino.bin` (the app alone) at `0x10000`.
 Recordings and `config.json` on the SD card are untouched either way.
 
 Pushing a tag `vX.Y.Z` builds both images on GitHub Actions
-(`.github/workflows/release.yml`) and publishes them as a release. The tag must
-match `FIRMWARE_VERSION`.
+(`.github/workflows/release.yml`) and publishes them as a release
+(`audio-spy-vX.Y.Z-full.bin` and `-update.bin`, with the notes from
+`.github/release-notes.md`). The tag must match `FIRMWARE_VERSION`.
 
 The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
 automatically) and NTP server are set in `firmware/audio-spy/config.h`.
