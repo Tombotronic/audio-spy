@@ -1,27 +1,33 @@
 # Pushing a tag like v0.9.0 builds the firmware and publishes it as a
 # GitHub release. The tag must match FIRMWARE_VERSION in version.h.
+# Run it by hand (Actions -> Release -> Run workflow) to only test the build.
 name: Release
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write  # create the release
 
+# Everything is pinned (runner, CLI, core, libraries), so a release builds
+# the same way every time.
 env:
-  # Pinned: esp32 cores built on ESP-IDF 5.5+ (3.3.x) break the mic (see README).
+  CLI_VERSION: 1.5.1
+  # esp32 cores built on ESP-IDF 5.5+ (3.3.x) break the mic (see README).
   FQBN: esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB
   CORE: esp32:esp32@3.2.0
   LIBS: M5Cardputer@1.1.1 M5Unified@0.2.23 M5GFX@0.2.30 ArduinoJson@7.4.3
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check tag matches FIRMWARE_VERSION
+        if: github.ref_type == 'tag'
         run: |
           version=$(sed -n 's/^#define FIRMWARE_VERSION "\(.*\)"$/\1/p' firmware/audio-spy/version.h)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
@@ -29,10 +35,13 @@ jobs:
             exit 1
           fi
 
-      - uses: arduino/setup-arduino-cli@v2
-
-      - name: Install core and libraries
+      - name: Install arduino-cli, core and libraries
         run: |
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh \
+            | BINDIR="$HOME/.local/bin" sh -s "$CLI_VERSION"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.local/bin:$PATH"
+          arduino-cli version
           arduino-cli core update-index
           arduino-cli core install "$CORE"
           arduino-cli lib install $LIBS
@@ -40,15 +49,15 @@ jobs:
       - name: Build
         run: arduino-cli compile --fqbn "$FQBN" --output-dir build firmware/audio-spy
 
-      - name: Collect release files
-        run: |
-          mkdir dist
-          cp build/audio-spy.ino.merged.bin "dist/audio-spy-$GITHUB_REF_NAME.bin"
+      - name: Name the image
+        if: github.ref_type == 'tag'
+        run: cp build/audio-spy.ino.merged.bin "audio-spy-$GITHUB_REF_NAME.bin"
 
       - name: Publish release
+        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           sed "s/VERSION/$GITHUB_REF_NAME/g" .github/release-notes.md > notes.md
-          gh release create "$GITHUB_REF_NAME" dist/* --title "Audio Spy $GITHUB_REF_NAME" \
+          gh release create "$GITHUB_REF_NAME" "audio-spy-$GITHUB_REF_NAME.bin" --title "Audio Spy $GITHUB_REF_NAME" \
             --notes-file notes.md --generate-notes
