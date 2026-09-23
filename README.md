@@ -2,6 +2,11 @@
 
 Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stack.com/en/core/Cardputer-Adv). Records continuously, keeps only the segments that contain sound, and exposes a web page to browse, audition, and collect the captured files.
 
+> **Legal note:** Recording conversations without the consent of everyone
+> involved is illegal in many countries (in Germany, for example, under § 201
+> StGB). Only use this device where you're allowed to record, and inform the
+> people around it. You are responsible for how you use it.
+
 ## How it works
 
 - Audio is captured continuously in ~10 second chunks, measuring the RMS level of every second.
@@ -12,7 +17,10 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 ## Hardware
 
 - M5Stack Cardputer Adv (built-in SD slot; this unit has no PSRAM)
-- Arduino framework + M5Unified/M5Cardputer library
+- Arduino framework, with these libraries (tested versions; install with `arduino-cli lib install`):
+  - `M5Cardputer` 1.1.1
+  - `M5Unified` 0.2.23 and `M5GFX` 0.2.30
+  - `ArduinoJson` 7.4.3
 - The ES8311 mic codec's analog gain (PGA) is raised to +18 dB after `Mic.begin()`; M5Unified leaves it at 0 dB, which makes recordings very quiet
 
 ## Build
@@ -74,6 +82,11 @@ Settings live in `/audio-spy/config.json` on the same card (created with default
 
 Password-protected (basic HTTP auth) page served over the local WiFi network at the device's IP (press **I** on the device to see it). User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
 
+**Change the default password** before using it on a shared network: edit
+`webPassword` in `/audio-spy/config.json` on the SD card and reboot. The page
+uses plain HTTP, so it's meant for your own local network only; don't expose
+it to the internet.
+
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
@@ -91,3 +104,7 @@ Press **I** to show the device's IP address (where the web interface is served) 
 ## Status
 
 Firmware implemented and running on the device.
+
+## License
+
+[MIT](LICENSE)
