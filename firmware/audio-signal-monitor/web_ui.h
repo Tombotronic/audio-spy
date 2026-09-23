@@ -112,6 +112,11 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   .file .name { flex: 1; word-break: break-all; }
   .file .player { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
   .file .play { width: 36px; padding: 6px 0; }
+  /* Spinning ring while the WAV downloads (replaces the ▶ glyph). */
+  .file .play.loading::after { content: ''; display: inline-block; width: 12px; height: 12px; vertical-align: middle;
+                               border: 2px solid var(--muted); border-top-color: var(--fg); border-radius: 50%;
+                               animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .file canvas { flex: 1; min-width: 0; height: 40px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; cursor: pointer; }
   .file .time { font-variant-numeric: tabular-nums; min-width: 84px; text-align: right; }
   .muted { color: var(--muted); font-size: 0.85em; }
@@ -340,7 +345,7 @@ const peaksCache = {};             // key(name,size) -> Float32Array (0..1)
 const audioCache = {};             // key(name,size) -> { samples, sampleRate, duration, gain, buffer }
 const rows = {};                   // name -> { file, canvas, playBtn, timeEl }
 let fetchQueue = Promise.resolve();
-let listSignature = '';
+let listSignature = null;  // null = force a rebuild ('' is a valid, empty list)
 let lastFiles = [];
 
 function key(f) { return f.name + '|' + f.size; }
@@ -462,7 +467,10 @@ function drawWave(name) {
 function updateRowUi(name) {
   const r = rows[name];
   if (!r) return;
-  setText(r.playBtn, play.loading === name ? '…' : (name === play.name && play.playing ? '❚❚' : '▶'));
+  const loading = play.loading === name;
+  r.playBtn.classList.toggle('loading', loading);
+  r.playBtn.setAttribute('aria-label', loading ? 'Loading' : (name === play.name && play.playing ? 'Pause' : 'Play'));
+  setText(r.playBtn, loading ? '' : (name === play.name && play.playing ? '❚❚' : '▶'));
   setText(r.timeEl, (name === play.name ? fmtTime(currentPos()) + ' / ' : '') + fmtTime(totalDuration(r.file)));
   drawWave(name);
 }
@@ -753,7 +761,7 @@ document.getElementById('deleteAllYes').addEventListener('click', async () => {
     yes.disabled = false;
     showDeleteAllConfirm(false);
     result.hidden = false;
-    listSignature = '';
+    listSignature = null;
     refreshFiles();
   }
 });
