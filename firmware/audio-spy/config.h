@@ -3,6 +3,8 @@
 #include <Arduino.h>
 
 #define CONFIG_PATH "/audio-spy/config.json"
+#define CONFIG_TMP_PATH "/audio-spy/config.json.tmp"  // written first, then renamed
+#define CONFIG_BAD_PATH "/audio-spy/config.json.bad"  // an unreadable config, kept for the user
 
 // NTP time sync
 #define NTP_SERVER "pool.ntp.org"
@@ -22,5 +24,7 @@ struct Config {
 // doesn't exist yet. Returns the loaded (or newly-created default) config.
 Config configLoad();
 
-// Persists the given config to CONFIG_PATH.
+// Persists the given config to CONFIG_PATH. Written to CONFIG_TMP_PATH and
+// renamed over it, so a power cut never leaves a half-written file (which
+// would silently reset the web password to the default on the next boot).
 bool configSave(const Config& cfg);

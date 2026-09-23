@@ -8,22 +8,29 @@
 #include "storage.h"
 #include "wav_writer.h"
 
+static_assert(WAV_SAMPLE_RATE == CHUNK_SAMPLE_RATE, "runs are copied byte for byte from chunks");
+
+// Runs are split after this much audio: FAT32 can't hold a file of 4 GiB or
+// more (reached after ~37 h of Bypass Threshold), and the web UI decodes a
+// whole file in the browser to play it. A multiple of BYTES_PER_SECOND, so
+// files split on whole seconds.
+static constexpr uint32_t MAX_RUN_BYTES = 3600 * BYTES_PER_SECOND;
+
 static float currentThreshold() {
     AppStateLock lock;
     return g_state.thresholdRms;
 }
 
-static bool bypassThreshold() {
-    AppStateLock lock;
-    return g_state.bypassThreshold;
-}
-
+// The SD card is queried before taking the lock: the capture task takes it
+// for every mic block and must never wait on card I/O.
 static void publishLiveState(float rms, bool recording) {
+    uint64_t freeBytes = storageFreeBytes();
+    uint64_t totalBytes = storageTotalBytes();
     AppStateLock lock;
     g_state.liveRms = rms;
     g_state.isRecording = recording;
-    g_state.freeBytes = storageFreeBytes();
-    g_state.totalBytes = storageTotalBytes();
+    g_state.freeBytes = freeBytes;
+    g_state.totalBytes = totalBytes;
 }
 
 // Name (not path) of the WAV currently being written, or "" between runs,
@@ -48,6 +55,7 @@ static constexpr int WINDOW_S = 3 * CHUNK_SECONDS;
 struct PendingChunk {
     bool valid = false;
     uint8_t slotIndex = 0;
+    uint32_t samples = 0;
     time_t startTime = 0;
     bool loud[CHUNK_SECONDS] = {};
 };
@@ -127,8 +135,10 @@ static void endRun() {
 }
 
 // Copies the kept seconds of a chunk's temp file into the current run
-// (starting/ending runs at kept/dropped boundaries), then drops the temp
-// file and frees the slot for the capture task to reuse.
+// (starting/ending runs at kept/dropped boundaries, and splitting runs at
+// MAX_RUN_BYTES), then frees the slot for the capture task to reuse. Only
+// the chunk's recorded samples are copied: the rest of the temp file is
+// left over from an earlier chunk.
 static void applyChunk(const PendingChunk& chunk, const bool* keep) {
     uint8_t slotIndex = chunk.slotIndex;
     char mask[CHUNK_SECONDS + 1];
@@ -147,13 +157,18 @@ static void applyChunk(const PendingChunk& chunk, const bool* keep) {
         }
         int e = s;
         while (e < CHUNK_SECONDS && keep[e]) e++;
-        if (!s_runActive) startRun(chunk.startTime + s);
-        if (s_runActive) {
+        uint32_t from = s * BYTES_PER_SECOND;
+        uint32_t to = min((uint32_t)(e * BYTES_PER_SECOND), chunk.samples * (uint32_t)sizeof(int16_t));
+        while (from < to) {
+            if (s_runActive && s_writer.dataBytes() >= MAX_RUN_BYTES) endRun();
+            if (!s_runActive) startRun(chunk.startTime + from / BYTES_PER_SECOND);
+            if (!s_runActive) break;
             if (!src) src = SD.open(path, FILE_READ);
-            if (src) {
-                src.seek(s * BYTES_PER_SECOND);
-                s_writer.appendFromFile(src, (e - s) * BYTES_PER_SECOND);
-            }
+            if (!src) break;
+            uint32_t n = min(to - from, MAX_RUN_BYTES - s_writer.dataBytes());
+            src.seek(from);
+            s_writer.appendFromFile(src, n);
+            from += n;
         }
         s = e;
     }
@@ -163,7 +178,6 @@ static void applyChunk(const PendingChunk& chunk, const bool* keep) {
         storageEnforceRollingLimit(s_runName);
     }
     if (src) src.close();
-    SD.remove(path);
     audioCaptureReleaseSlot(slotIndex);
 }
 
@@ -186,18 +200,20 @@ static void flushPending() {
 
 static void processChunk(const FilledChunk& chunk) {
     float threshold = currentThreshold();
-    bool keepAll = bypassThreshold();
     PendingChunk current;
     current.valid = true;
     current.slotIndex = chunk.slotIndex;
+    current.samples = chunk.samples;
     current.startTime = chunk.startTime;
     for (int s = 0; s < CHUNK_SECONDS; s++) {
-        current.loud[s] = keepAll || chunk.secondRms[s] >= threshold;
+        current.loud[s] = chunk.bypass || chunk.secondRms[s] >= threshold;
     }
 
+    // A chunk cut short by a pause is never followed directly, even when
+    // a quick resume makes the next one start about on time.
     if (s_pending.valid) {
         long gap = (long)(current.startTime - s_pending.startTime) - CHUNK_SECONDS;
-        if (labs(gap) > CONTIGUOUS_TOLERANCE_S) flushPending();
+        if (s_pending.samples < CHUNK_SAMPLES || labs(gap) > CONTIGUOUS_TOLERANCE_S) flushPending();
     }
     if (s_pending.valid) {
         bool keep[CHUNK_SECONDS];

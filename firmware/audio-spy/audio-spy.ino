@@ -7,6 +7,7 @@
 #include "net.h"
 #include "status_screen.h"
 #include "storage.h"
+#include "version.h"
 #include "wav_writer.h"
 #include "web_server.h"
 
@@ -15,6 +16,7 @@ Config g_config;
 void setup() {
     Serial.begin(115200);
     delay(200);
+    Serial.println("[boot] Audio Spy v" FIRMWARE_VERSION);
 
     auto cfg = M5.config();
     cfg.internal_spk = false;  // physical speaker is never used; mic/speaker share the codec

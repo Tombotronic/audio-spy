@@ -6,6 +6,7 @@
 #define WAV_SAMPLE_RATE 16000
 #define WAV_BITS_PER_SAMPLE 16
 #define WAV_CHANNELS 1
+#define WAV_HEADER_BYTES 44  // audio starts right after the header
 
 // Streaming WAV writer for a single continuous "run" (a merged sequence of
 // kept chunks). The header's size fields are written as placeholders on
@@ -23,6 +24,7 @@ public:
     // flush/close; without this an interrupted run ends up as 0 bytes).
     void checkpoint();
     void endRun();
+    uint32_t dataBytes() const { return _dataBytesWritten; }
 
 private:
     File _file;

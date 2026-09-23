@@ -2,8 +2,6 @@
 
 #include <SD.h>
 #include <SPI.h>
-#include <algorithm>
-#include <vector>
 
 bool storageInit() {
     SPI.begin(SD_SPI_SCK_PIN, SD_SPI_MISO_PIN, SD_SPI_MOSI_PIN, SD_SPI_CS_PIN);
@@ -49,38 +47,48 @@ uint64_t storageTotalBytes() {
     return SD.totalBytes();
 }
 
-// Filenames are NTP timestamps (e.g. 2026-09-22_14-05-30.wav), so
-// lexicographic order is chronological order.
-static std::vector<String> listRecordingsOldestFirst() {
-    std::vector<String> names;
+void storageForEachRecording(const std::function<void(File& entry)>& fn) {
     File dir = SD.open(RECORDINGS_DIR);
-    if (!dir) return names;
+    if (!dir) return;
 
     File entry = dir.openNextFile();
     while (entry) {
-        if (!entry.isDirectory()) {
-            String name = entry.name();
-            if (name.endsWith(".wav")) names.push_back(name);
-        }
+        if (!entry.isDirectory() && String(entry.name()).endsWith(".wav")) fn(entry);
         entry.close();
         entry = dir.openNextFile();
     }
     dir.close();
+}
 
-    std::sort(names.begin(), names.end());
-    return names;
+// Filenames are NTP timestamps (e.g. 2026-09-22_14-05-30.wav), so
+// lexicographic order is chronological order. Files named before the first
+// NTP sync ("unsynced-...") have no known time; they count as older than
+// every timestamped one, since otherwise ('u' sorts after digits) they
+// would never be deleted.
+static bool isOlder(const String& a, const String& b) {
+    bool unsyncedA = a.startsWith("unsynced-"), unsyncedB = b.startsWith("unsynced-");
+    if (unsyncedA != unsyncedB) return unsyncedA;
+    return a < b;
+}
+
+// One pass over the directory instead of a sorted list of every name.
+static String findOldestRecording(const String& keepName) {
+    String oldest;
+    storageForEachRecording([&](File& entry) {
+        String name = entry.name();
+        if (name == keepName) return;
+        if (oldest.length() == 0 || isOlder(name, oldest)) oldest = name;
+    });
+    return oldest;
 }
 
 void storageEnforceRollingLimit(const String& keepName) {
-    if (storageFreeBytes() >= LOW_SPACE_MARGIN_BYTES) return;
+    while (storageFreeBytes() < LOW_SPACE_MARGIN_BYTES) {
+        String oldest = findOldestRecording(keepName);
+        if (oldest.length() == 0) return;
 
-    std::vector<String> names = listRecordingsOldestFirst();
-    for (const String& name : names) {
-        if (storageFreeBytes() >= LOW_SPACE_MARGIN_BYTES) break;
-        if (name == keepName) continue;
-
-        String path = String(RECORDINGS_DIR) + "/" + name;
+        String path = String(RECORDINGS_DIR) + "/" + oldest;
         Serial.printf("[storage] low space, deleting oldest recording: %s\n", path.c_str());
-        SD.remove(path);
+        if (!SD.remove(path)) return;  // would pick the same file again
     }
 }

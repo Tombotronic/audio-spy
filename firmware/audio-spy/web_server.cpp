@@ -6,12 +6,13 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <math.h>
-#include <vector>
 
 #include "app_state.h"
 #include "config.h"
 #include "icon_png.h"
 #include "storage.h"
+#include "version.h"
+#include "wav_writer.h"
 #include "web_ui.h"
 #include "wifi_setup.h"
 
@@ -22,6 +23,22 @@ static WebServer server(80);
 static bool requireAuth() {
     if (!server.authenticate("admin", g_config.webPassword.c_str())) {
         server.requestAuthentication();
+        return false;
+    }
+    return true;
+}
+
+// Every POST must carry this header (the web UI's fetch() sets it). Browsers
+// attach cached Basic Auth credentials to cross-site form posts, so without
+// it any web page could make a logged-in browser delete all recordings or
+// forget the WiFi. A form can't set custom headers, and a cross-origin
+// fetch() with one needs a CORS preflight, which this server never allows.
+static const char* CSRF_HEADER = "X-Audio-Spy";
+
+static bool requireAuthPost() {
+    if (!requireAuth()) return false;
+    if (server.header(CSRF_HEADER) != "1") {
+        server.send(403, "text/plain", "missing " + String(CSRF_HEADER) + " header");
         return false;
     }
     return true;
@@ -39,6 +56,11 @@ static bool isSafeRecordingName(const String& name) {
 static bool isCurrentRecording(const String& name) {
     AppStateLock lock;
     return name == g_state.currentFile;
+}
+
+static String currentRecording() {
+    AppStateLock lock;
+    return String(g_state.currentFile);
 }
 
 static void handleIndex() {
@@ -63,34 +85,36 @@ static void handleManifest() {
                 "\"icons\":[{\"src\":\"/icon.png\",\"sizes\":\"180x180\",\"type\":\"image/png\"}]}");
 }
 
+// Streamed as chunked JSON a few entries at a time: the card can hold
+// thousands of recordings, far more than fit in RAM as one document.
 static void handleFiles() {
     if (!requireAuth()) return;
 
-    JsonDocument doc;
-    JsonArray arr = doc.to<JsonArray>();
-
-    File dir = SD.open(RECORDINGS_DIR);
-    if (dir) {
-        File entry = dir.openNextFile();
-        while (entry) {
-            String name = entry.name();
-            if (!entry.isDirectory() && name.endsWith(".wav")) {
-                JsonObject o = arr.add<JsonObject>();
-                o["name"] = name;
-                o["size"] = entry.size();
-                o["recording"] = isCurrentRecording(name);
-            }
-            entry.close();
-            entry = dir.openNextFile();
-        }
-        dir.close();
-    }
-
-    String out;
-    serializeJson(doc, out);
+    String current = currentRecording();
     // Live data: Safari otherwise reuses a stale list (e.g. after Delete all).
     server.sendHeader("Cache-Control", "no-store");
-    server.send(200, "application/json", out);
+    server.setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server.send(200, "application/json", "");
+
+    String out = "[";
+    bool first = true;
+    storageForEachRecording([&](File& entry) {
+        JsonDocument doc;
+        doc["name"] = entry.name();
+        doc["size"] = entry.size();
+        doc["recording"] = current == entry.name();
+        if (!first) out += ',';
+        first = false;
+        String item;
+        serializeJson(doc, item);
+        out += item;
+        if (out.length() >= 1024) {
+            server.sendContent(out);
+            out = "";
+        }
+    });
+    out += "]";
+    server.sendContent(out);
 }
 
 static void handleStream(bool download) {
@@ -132,7 +156,7 @@ static void handlePeaks() {
         return;
     }
 
-    static constexpr size_t HEADER_BYTES = 44;
+    static constexpr size_t HEADER_BYTES = WAV_HEADER_BYTES;
     static constexpr size_t WINDOW_SAMPLES = 512;  // 32 ms at 16 kHz
     static int16_t window[WINDOW_SAMPLES];
     size_t size = file.size();
@@ -158,7 +182,7 @@ static void handlePeaks() {
 }
 
 static void handleDelete() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     if (!server.hasArg("name") || !isSafeRecordingName(server.arg("name"))) {
         server.send(400, "text/plain", "bad name");
         return;
@@ -178,29 +202,30 @@ static void handleDelete() {
 }
 
 // Deletes every recording except the one currently being written (if any).
+// Names are collected in small batches (not all at once, see handleFiles),
+// and deleted after the directory is closed, not while listing it.
 static void handleDeleteAll() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
 
-    std::vector<String> names;
-    File dir = SD.open(RECORDINGS_DIR);
-    if (dir) {
-        File entry = dir.openNextFile();
-        while (entry) {
-            String name = entry.name();
-            if (!entry.isDirectory() && name.endsWith(".wav")) names.push_back(name);
-            entry.close();
-            entry = dir.openNextFile();
-        }
-        dir.close();
-    }
-
+    static constexpr int BATCH = 32;
     int deleted = 0, skipped = 0;
-    for (const String& name : names) {
-        if (isCurrentRecording(name)) {
-            skipped++;
-            continue;
+    for (;;) {
+        String current = currentRecording();
+        String batch[BATCH];
+        int count = 0;
+        skipped = 0;
+        storageForEachRecording([&](File& entry) {
+            String name = entry.name();
+            if (name == current) skipped++;
+            else if (count < BATCH) batch[count++] = name;
+        });
+        int removed = 0;
+        for (int i = 0; i < count; i++) {
+            if (isCurrentRecording(batch[i])) continue;  // a run started meanwhile
+            if (SD.remove(String(RECORDINGS_DIR) + "/" + batch[i])) removed++;
         }
-        if (SD.remove(String(RECORDINGS_DIR) + "/" + name)) deleted++;
+        deleted += removed;
+        if (count < BATCH || removed == 0) break;  // done, or stuck on undeletable files
     }
 
     JsonDocument doc;
@@ -231,6 +256,7 @@ static void handleStatus() {
         doc["wifiConnected"] = g_state.wifiConnected;
         doc["timeSynced"] = g_state.timeSynced;
         doc["uptimeS"] = millis() / 1000;
+        doc["version"] = FIRMWARE_VERSION;
     }
     doc["battery"] = M5.Power.getBatteryLevel();  // 0-100, -1 if unknown
 
@@ -241,7 +267,7 @@ static void handleStatus() {
 }
 
 static void handleSetThreshold() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     if (!server.hasArg("value")) {
         server.send(400, "text/plain", "missing value");
         return;
@@ -263,7 +289,7 @@ static void handleSetThreshold() {
 }
 
 static void handleSetStealth() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     bool on = server.hasArg("on") && server.arg("on") == "1";
 
     g_config.stealthMode = on;
@@ -278,7 +304,7 @@ static void handleSetStealth() {
 // The lock is released before replying: a slow client must not hold up
 // the capture task, which takes it for every mic block.
 static void setPaused(bool paused) {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     {
         AppStateLock lock;
         g_state.paused = paused;
@@ -287,7 +313,7 @@ static void setPaused(bool paused) {
 }
 
 static void handleSetBypass() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     bool on = server.hasArg("on") && server.arg("on") == "1";
     {
         AppStateLock lock;
@@ -299,7 +325,7 @@ static void handleSetBypass() {
 // Clears the saved network and reboots into WiFi setup on the device.
 // An interrupted recording is repaired at boot like after a power cut.
 static void handleForgetWifi() {
-    if (!requireAuth()) return;
+    if (!requireAuthPost()) return;
     wifiForgetCreds();
     server.send(200, "text/plain", "ok");
     Serial.println("[web] WiFi credentials cleared, restarting");
@@ -324,6 +350,8 @@ void webServerStart() {
     server.on("/resume", HTTP_POST, []() { setPaused(false); });
     server.on("/bypass", HTTP_POST, handleSetBypass);
     server.on("/forgetwifi", HTTP_POST, handleForgetWifi);
+    const char* headers[] = {CSRF_HEADER};
+    server.collectHeaders(headers, 1);
     server.begin();
     Serial.println("[web] server started on port 80");
 }

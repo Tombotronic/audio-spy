@@ -30,13 +30,13 @@ static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutM
 
 bool netConnectWifi(uint32_t timeoutMs) {
     String ssid, pass;
-    if (!wifiLoadCreds(ssid, pass)) wifiPromptCreds(ssid, pass);
+    bool haveCreds = wifiLoadCreds(ssid, pass) || wifiPromptCreds(ssid, pass);
 
-    bool connected = tryConnect(ssid, pass, timeoutMs);
+    bool connected = haveCreds && tryConnect(ssid, pass, timeoutMs);
     // Wrong password or a different network: let the user fix it on the
     // spot. No key within the timeout = boot on offline (keeps recording).
-    while (!connected && wifiAskReenter(10000)) {
-        wifiPromptCreds(ssid, pass);
+    while (haveCreds && !connected && wifiAskReenter(10000)) {
+        if (!wifiPromptCreds(ssid, pass)) break;
         connected = tryConnect(ssid, pass, timeoutMs);
     }
     netRefreshState();
@@ -56,6 +56,9 @@ static bool clockIsSet(const struct tm& t) {
 
 bool netSyncTime(uint32_t timeoutMs) {
     configTzTime(TZ_INFO, NTP_SERVER);
+    // Offline there's nothing to wait for; SNTP keeps retrying in the
+    // background and netRefreshState() notices once the clock is set.
+    if (WiFi.status() != WL_CONNECTED) timeoutMs = 0;
 
     struct tm timeinfo;
     uint32_t start = millis();

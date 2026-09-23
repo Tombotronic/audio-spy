@@ -37,14 +37,19 @@ bool audioCaptureStart();
 
 struct FilledChunk {
     uint8_t slotIndex;
+    uint32_t samples;                // recorded; < CHUNK_SAMPLES if a pause cut it short
     float secondRms[CHUNK_SECONDS];  // per-second RMS, normalized 0.0-1.0
     float rms;                       // loudest of secondRms
     time_t startTime;                // wall clock at the chunk's first sample
+    bool bypass;                     // Bypass Threshold was on while recording it
 };
 
 // Items are FilledChunk structs.
 QueueHandle_t audioCaptureFilledQueue();
 
 // Returns a slot to the free pool once the pipeline is done with it
-// (its temp file has been copied into a run or discarded).
+// (its temp file has been copied into a run or discarded). The temp file
+// stays on the card and is overwritten in place next time: no cluster
+// allocation (a common cause of SD write stalls) once every slot exists.
+// Bytes past FilledChunk::samples are left over from an earlier chunk.
 void audioCaptureReleaseSlot(uint8_t slotIndex);

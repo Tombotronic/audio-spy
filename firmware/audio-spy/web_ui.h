@@ -78,8 +78,10 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   .bar > #level { height: 100%; background: var(--level); width: 0%; transition: width 0.15s linear; }
   .bar > #level.above { background: var(--level-above); }
   .bar > #thrMark { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }
-  button { background: var(--btn); color: var(--fg); border: 1px solid var(--btn-border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
-  button:hover { background: var(--btn-hover); }
+  button, a.btn { background: var(--btn); color: var(--fg); border: 1px solid var(--btn-border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+  /* A download link that looks like the buttons next to it. */
+  a.btn { font: 13.333px -apple-system, sans-serif; text-decoration: none; display: inline-flex; align-items: center; box-sizing: border-box; }
+  button:hover, a.btn:hover { background: var(--btn-hover); }
   button.danger { border-color: var(--danger); color: var(--danger-text); }
   button.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
   button:disabled { opacity: 0.4; cursor: default; }
@@ -88,6 +90,8 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   #state.st-listening { color: var(--ok); }
   #state.st-rec { color: var(--rec); }
   #state.st-paused { color: var(--accent); }
+  #state.st-offline { color: var(--muted); }
+  #error { color: var(--danger-text); margin: 6px 0; }
   #thresholdVal { color: var(--accent); margin-left: 4px; }
   #battery { justify-self: end; font-variant-numeric: tabular-nums; }
   /* State left, threshold centred on the page (equal side columns). */
@@ -125,7 +129,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
              padding: max(48px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
   /* Touch screens: finger-sized controls (Apple's 44 pt guideline). */
   @media (pointer: coarse) {
-    button { min-height: 44px; padding: 8px 14px; font-size: 1em; }
+    button, a.btn { min-height: 44px; padding: 8px 14px; font-size: 1em; }
     .file .play { width: 44px; }
     .file canvas { height: 44px; }
     #threshold { height: 32px; }
@@ -192,6 +196,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
     <button id="pauseBtn">Pause</button>
     <button id="bypassBtn" title="While on, everything is recorded regardless of the threshold. Off again after a device reboot.">Bypass Threshold</button>
   </div>
+  <p id="error" role="alert" hidden></p>
 
   <h2>Recordings</h2>
   <div id="files"></div>
@@ -205,6 +210,10 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
       <div class="setting">
         <div><strong>IP address</strong></div>
         <span id="ip" class="muted"></span>
+      </div>
+      <div class="setting">
+        <div><strong>Firmware</strong></div>
+        <span id="version" class="muted"></span>
       </div>
       <div class="setting">
         <div><strong>WiFi</strong><br><span class="muted" id="ssid"></span></div>
@@ -237,7 +246,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
         </div>
       </div>
       <label class="setting">
-        <div><strong>Stealth mode</strong><br><span class="muted">Turns the device screen off. Back on after a reboot.</span></div>
+        <div><strong>Stealth mode</strong><br><span class="muted">Turns the device screen off. Stays on after a reboot.</span></div>
         <input type="checkbox" id="stealth">
       </label>
       <div class="setting">
@@ -256,10 +265,25 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   </div>
 
 <script>
-async function api(path, opts) {
-  const res = await fetch(path, { cache: 'no-store', ...opts });
-  if (!res.ok) throw new Error(path + ' -> ' + res.status);
+// The device rejects POSTs without X-Audio-Spy (CSRF protection: a
+// cross-site form can't set it).
+async function api(path, opts = {}) {
+  const res = await fetch(path, { cache: 'no-store', ...opts, headers: { 'X-Audio-Spy': '1', ...opts.headers } });
+  if (!res.ok) throw new Error(path + ' -> ' + res.status + ' ' + (await res.text()).trim());
   return res;
+}
+function post(path, body) {
+  return api(path, body === undefined ? { method: 'POST' }
+    : { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+}
+
+let errorTimer = 0;
+function showError(msg) {
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.hidden = false;
+  clearTimeout(errorTimer);
+  errorTimer = setTimeout(() => { el.hidden = true; }, 6000);
 }
 
 // Threshold is stored as linear RMS (0..1) on the device; the UI works in dBFS.
@@ -292,6 +316,13 @@ async function refreshStatus() {
   let s;
   try {
     s = await (await api('/status')).json();
+  } catch (e) {
+    // Unreachable (or rebooting): don't keep showing the last state as live.
+    const stateEl = document.getElementById('state');
+    stateEl.textContent = 'OFFLINE';
+    stateEl.className = 'st-offline';
+    document.getElementById('level').style.width = '0%';
+    return;
   } finally {
     statusInFlight = false;
   }
@@ -307,6 +338,7 @@ async function refreshStatus() {
   level.classList.toggle('above', s.levelRms >= threshold);
   document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
+  document.getElementById('version').textContent = s.version ? 'v' + s.version : '';
   document.getElementById('ssid').textContent = s.ssid || '';
   showStorage(s.freeBytes, s.totalBytes);
   document.getElementById('battery').textContent = s.battery >= 0 ? '🔋 ' + s.battery + '%' : '';
@@ -342,10 +374,10 @@ const MAX_GAIN = 64;               // ...but never boost more than +36 dB
 let actx = null;
 const play = { name: null, source: null, startCtx: 0, offset: 0, playing: false, timer: 0, loading: null };
 const peaksCache = {};             // key(name,size) -> Float32Array (0..1)
-const audioCache = {};             // key(name,size) -> { samples, sampleRate, duration, gain, buffer }
+const audioCache = {};             // key(name,size) -> { samples, sampleRate, duration, gain, buffer }; latest file only
 const rows = {};                   // name -> { file, canvas, playBtn, timeEl }
 let fetchQueue = Promise.resolve();
-let listSignature = null;  // null = force a rebuild ('' is a valid, empty list)
+let listSignature = null;  // names + recording flags; null = force a rebuild ('' is a valid, empty list)
 let lastFiles = [];
 let filesSeq = 0;          // only the newest /files response may update the list
 
@@ -368,6 +400,7 @@ function fmtTime(s) {
   return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
 }
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+function sizeText(f) { return '(' + (f.size / 1048576).toFixed(2) + ' MB)'; }
 function sizeDuration(f) { return Math.max(0, f.size - WAV_HEADER_BYTES) / BYTES_PER_SEC; }
 
 function queued(task) {
@@ -416,6 +449,9 @@ function loadAudio(f) {
   return queued(async () => {
     if (audioCache[k]) return audioCache[k];
     const buf = await (await api('/stream?name=' + encodeURIComponent(f.name))).arrayBuffer();
+    // Decoded audio takes ~6 bytes per sample (an hour: ~350 MB); keeping
+    // every played file gets the tab killed on iOS. Only one plays at a time.
+    for (const other in audioCache) delete audioCache[other];
     const wav = parseWav(buf);
     let peak = 0;
     for (let i = 0; i < wav.samples.length; i++) {
@@ -578,8 +614,26 @@ async function refreshFiles() {
   files.sort((a, b) => b.name.localeCompare(a.name));
   lastFiles = files;
   updateDeleteAllInfo();
-  const sig = files.map((f) => key(f) + (f.recording ? '*' : '')).join(',');
-  if (sig === listSignature) return;   // unchanged: keep DOM (and canvases) as is
+  // Same files, only sizes changed (the open run grows every chunk): update
+  // those rows in place. Rebuilding would flicker and can swallow a click.
+  const sig = files.map((f) => f.name + (f.recording ? '*' : '')).join(',');
+  if (sig === listSignature) {
+    for (const f of files) {
+      const r = rows[f.name];
+      if (!r || r.file.size === f.size) continue;
+      r.sizeEl.textContent = sizeText(f);
+      // Keep drawing the old waveform until the new one is in.
+      const swap = () => {
+        const cur = rows[f.name];
+        if (!cur || cur.file.size >= f.size) return;
+        delete peaksCache[key(cur.file)];
+        cur.file = f;
+        updateRowUi(f.name);
+      };
+      loadPeaks(f).then(swap, swap);
+    }
+    return;
+  }
   listSignature = sig;
 
   const el = document.getElementById('files');
@@ -591,10 +645,9 @@ async function refreshFiles() {
     const row = document.createElement('div');
     row.className = 'file';
     row.dataset.name = f.name;
-    const sizeMB = (f.size / 1048576).toFixed(2);
     row.innerHTML =
-      '<div class="head"><span class="name">' + escapeHtml(displayName(f.name)) + ' <span class="muted">(' + sizeMB + ' MB)</span></span>' +
-      '<a href="/download?name=' + encodeURIComponent(f.name) + '"><button>Download</button></a>' +
+      '<div class="head"><span class="name">' + escapeHtml(displayName(f.name)) + ' <span class="muted size"></span></span>' +
+      '<a class="btn" href="/download?name=' + encodeURIComponent(f.name) + '">Download</a>' +
       '<button class="danger">Delete</button></div>' +
       '<div class="player"><button class="play">▶</button><canvas></canvas><span class="time muted"></span></div>';
     const r = rows[f.name] = {
@@ -602,7 +655,9 @@ async function refreshFiles() {
       canvas: row.querySelector('canvas'),
       playBtn: row.querySelector('.play'),
       timeEl: row.querySelector('.time'),
+      sizeEl: row.querySelector('.size'),
     };
+    r.sizeEl.textContent = sizeText(f);
     r.playBtn.addEventListener('click', () => {
       unlockAudio();
       if (play.name === f.name && play.playing) pause();
@@ -620,8 +675,12 @@ async function refreshFiles() {
     row.querySelector('.danger').addEventListener('click', async () => {
       if (!confirm('Delete ' + displayName(f.name) + '?')) return;
       if (play.name === f.name) { stopSource(); play.playing = false; play.name = null; }
-      await api('/delete?name=' + encodeURIComponent(f.name), { method: 'POST' });
-      refreshFiles();
+      try {
+        await post('/delete?name=' + encodeURIComponent(f.name));
+      } catch (err) {
+        showError('Deleting failed: ' + err.message);
+      }
+      refreshFilesQuietly();
     });
     el.appendChild(row);
     updateRowUi(f.name);
@@ -644,14 +703,21 @@ document.getElementById('threshold').addEventListener('change', async (e) => {
   pendingDb = db;
   pendingPostedAt = 0;
   try {
-    await api('/threshold', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'value=' + dbToRms(db).toPrecision(4) });
+    await post('/threshold', 'value=' + dbToRms(db).toPrecision(4));
+  } catch (err) {
+    showError('Setting the threshold failed: ' + err.message);
   } finally {
     // a newer change may have started meanwhile; only settle our own value
     if (pendingDb === db) pendingPostedAt = Date.now();
   }
 });
 document.getElementById('stealth').addEventListener('change', async (e) => {
-  await api('/stealth', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (e.target.checked ? '1' : '0') });
+  try {
+    await post('/stealth', 'on=' + (e.target.checked ? '1' : '0'));
+  } catch (err) {
+    e.target.checked = !e.target.checked;
+    showError('Changing stealth mode failed: ' + err.message);
+  }
 });
 // --- Settings panel ------------------------------------------------------
 function fmtBytes(b) {
@@ -755,7 +821,7 @@ document.getElementById('deleteAllYes').addEventListener('click', async () => {
   const result = document.getElementById('deleteAllResult');
   try {
     if (play.name) { stopSource(); play.playing = false; play.name = null; }
-    const r = await (await api('/deleteall', { method: 'POST' })).json();
+    const r = await (await post('/deleteall')).json();
     result.textContent = 'Deleted ' + plural(r.deleted) + '.' +
       (r.skipped ? ' The recording in progress was kept.' : '');
   } catch (e) {
@@ -765,7 +831,7 @@ document.getElementById('deleteAllYes').addEventListener('click', async () => {
     showDeleteAllConfirm(false);
     result.hidden = false;
     listSignature = null;
-    refreshFiles();
+    refreshFilesQuietly();
   }
 });
 
@@ -776,7 +842,7 @@ document.getElementById('forgetWifiYes').addEventListener('click', async () => {
   yes.disabled = true;
   const result = document.getElementById('forgetWifiResult');
   try {
-    await api('/forgetwifi', { method: 'POST' });
+    await post('/forgetwifi');
     result.textContent = 'WiFi forgotten. The device is restarting; set up the new network on its keyboard.';
   } catch (e) {
     result.textContent = 'Forgetting WiFi failed: ' + e.message;
@@ -789,7 +855,11 @@ document.getElementById('forgetWifiYes').addEventListener('click', async () => {
 
 document.getElementById('pauseBtn').addEventListener('click', async () => {
   const paused = document.getElementById('pauseBtn').textContent === 'Resume';
-  await api(paused ? '/resume' : '/pause', { method: 'POST' });
+  try {
+    await post(paused ? '/resume' : '/pause');
+  } catch (err) {
+    showError((paused ? 'Resume' : 'Pause') + ' failed: ' + err.message);
+  }
   refreshStatus();
 });
 function showBypass(on) {
@@ -801,7 +871,11 @@ function showBypass(on) {
 document.getElementById('bypassBtn').addEventListener('click', async () => {
   const on = !document.getElementById('bypassBtn').classList.contains('active');
   showBypass(on);
-  await api('/bypass', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'on=' + (on ? '1' : '0') });
+  try {
+    await post('/bypass', 'on=' + (on ? '1' : '0'));
+  } catch (err) {
+    showError('Bypass failed: ' + err.message);
+  }
   refreshStatus();
 });
 
@@ -812,13 +886,15 @@ for (let db = -50; db <= -10; db += 10) {
   document.getElementById('scale').appendChild(tick);
 }
 
+// A failed /files poll just keeps the current list; /status shows OFFLINE.
+function refreshFilesQuietly() { refreshFiles().catch(() => {}); }
 refreshStatus();
-refreshFiles();
+refreshFilesQuietly();
 setInterval(refreshStatus, 500);
-setInterval(refreshFiles, 10000);
+setInterval(refreshFilesQuietly, 10000);
 // iOS suspends a home-screen app in the background; catch up at once on return.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { refreshStatus(); refreshFiles(); }
+  if (document.visibilityState === 'visible') { refreshStatus(); refreshFilesQuietly(); }
 });
 </script>
 </body>

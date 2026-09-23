@@ -105,7 +105,8 @@ static void captureTask(void*) {
         uint8_t slotIndex;
         if (xQueueReceive(s_freeQueue, &slotIndex, portMAX_DELAY) != pdTRUE) continue;
 
-        File tmp = SD.open(audioCaptureSlotPath(slotIndex), FILE_WRITE);
+        String slotPath = audioCaptureSlotPath(slotIndex);
+        File tmp = SD.exists(slotPath) ? SD.open(slotPath, "r+") : SD.open(slotPath, FILE_WRITE);
         if (!tmp) {
             Serial.println("[audio] failed to open chunk temp file");
             xQueueSend(s_freeQueue, &slotIndex, 0);
@@ -116,6 +117,7 @@ static void captureTask(void*) {
         time_t chunkStart = time(nullptr);
         double secondSquares[CHUNK_SECONDS] = {0};
         float loudestSecond = 0.0f;  // of the seconds completed so far
+        bool bypass = false;
         size_t recorded = 0;
         while (recorded < CHUNK_SAMPLES) {
             const size_t want = STREAM_BUF_SAMPLES;
@@ -139,6 +141,7 @@ static void captureTask(void*) {
                 g_state.levelRms = blockRms(block);
                 g_state.chunkLoudestSecondRms = loudestSecond;
                 paused = g_state.paused;
+                bypass = bypass || g_state.bypassThreshold;
             }
             // Pause takes effect now: the partial chunk is handed on as is
             // (seconds not recorded have an RMS of 0 and no bytes to copy).
@@ -148,7 +151,9 @@ static void captureTask(void*) {
 
         FilledChunk chunk;
         chunk.slotIndex = slotIndex;
+        chunk.samples = recorded;
         chunk.startTime = chunkStart;
+        chunk.bypass = bypass;
         chunk.rms = 0.0f;
         for (int sec = 0; sec < CHUNK_SECONDS; sec++) {
             chunk.secondRms[sec] = (float)(sqrt(secondSquares[sec] / CHUNK_SAMPLE_RATE) / 32768.0);

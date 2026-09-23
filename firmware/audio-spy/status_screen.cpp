@@ -4,6 +4,7 @@
 
 #include "app_state.h"
 #include "storage.h"
+#include "version.h"
 
 #define UPDATE_INTERVAL_MS 50
 
@@ -39,6 +40,10 @@ void statusScreenBootStep(const char* step) {
     canvas.setTextColor(LIGHTGREY, BLACK);
     canvas.setCursor(4, 40);
     canvas.print(step);
+    canvas.setTextSize(1);
+    canvas.setTextColor(DARKGREY, BLACK);
+    canvas.setCursor(4, canvas.height() - 12);
+    canvas.print("v" FIRMWARE_VERSION);
     canvas.pushSprite(0, 0);
 }
 
@@ -221,7 +226,10 @@ void statusScreenUpdate() {
     else canvas.printf("thr %.0f dB", toDb(threshold));
     canvas.setTextColor(LIGHTGREY, BLACK);
     canvas.setTextDatum(top_right);
-    canvas.drawString(String((uint32_t)(freeBytes / (1024ULL * 1024 * 1024))) + " GB free", x0 + w, canvas.height() - 10);
+    String freeText = freeBytes >= 1024ULL * 1024 * 1024
+                          ? String((uint32_t)(freeBytes / (1024ULL * 1024 * 1024))) + " GB free"
+                          : String((uint32_t)(freeBytes / (1024 * 1024))) + " MB free";
+    canvas.drawString(freeText, x0 + w, canvas.height() - 10);
     canvas.setTextDatum(top_left);
 
     canvas.pushSprite(0, 0);

@@ -11,6 +11,9 @@
 #define MAX_SHOWN_NETWORKS 6  // keys 1-6, plus 0 for manual entry
 #define MAX_SSID_LEN 32
 #define MAX_PASS_LEN 63       // WPA passphrase limit
+// Nobody at the keyboard (e.g. a restart after a power cut): give up and
+// boot offline, so the device still records.
+#define SETUP_IDLE_TIMEOUT_MS 120000
 
 static Preferences s_prefs;
 
@@ -43,10 +46,11 @@ static void clearScreen() {
     d.setCursor(0, 0);
 }
 
-// Reads one line from the keyboard. Enter confirms (only once there's
-// content, unless allowEmpty), backspace edits. mask echoes '*'.
-static String promptLine(const char* label, bool mask, bool allowEmpty, size_t maxLen) {
-    String value;
+// Reads one line from the keyboard into value. Enter confirms (only once
+// there's content, unless allowEmpty), backspace edits. mask echoes '*'.
+// Returns false after SETUP_IDLE_TIMEOUT_MS without a key press.
+static bool promptLine(const char* label, bool mask, bool allowEmpty, size_t maxLen, String& value) {
+    value = "";
     auto redraw = [&]() {
         clearScreen();
         M5Cardputer.Display.println(label);
@@ -58,9 +62,11 @@ static String promptLine(const char* label, bool mask, bool allowEmpty, size_t m
     };
     redraw();
 
-    while (true) {
+    uint32_t lastKey = millis();
+    while (millis() - lastKey < SETUP_IDLE_TIMEOUT_MS) {
         M5Cardputer.update();
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            lastKey = millis();
             auto status = M5Cardputer.Keyboard.keysState();
             bool changed = false;
             for (char c : status.word) {
@@ -75,16 +81,18 @@ static String promptLine(const char* label, bool mask, bool allowEmpty, size_t m
                 value.remove(cut);
                 changed = true;
             }
-            if (status.enter && (allowEmpty || value.length() > 0)) return value;
+            if (status.enter && (allowEmpty || value.length() > 0)) return true;
             if (changed) redraw();
         }
         delay(10);
     }
+    return false;
 }
 
 // Scans and lists networks strongest first, deduped by name (mesh/repeater
 // nodes show up once each). 1-6 picks one, 0 types a (hidden) SSID.
-static String pickSsid() {
+// Returns false after SETUP_IDLE_TIMEOUT_MS without a key press.
+static bool pickSsid(String& ssid) {
     clearScreen();
     M5Cardputer.Display.println("Scanning WiFi...");
 
@@ -130,23 +138,32 @@ static String pickSsid() {
     }
     M5Cardputer.Display.println("0:Manual entry");
 
-    while (true) {
+    uint32_t start = millis();
+    while (millis() - start < SETUP_IDLE_TIMEOUT_MS) {
         M5Cardputer.update();
         if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
             for (char c : M5Cardputer.Keyboard.keysState().word) {
-                if (c == '0') return promptLine("WiFi SSID:", false, false, MAX_SSID_LEN);
-                if (c >= '1' && c < '1' + shown) return names[c - '1'];
+                if (c == '0') return promptLine("WiFi SSID:", false, false, MAX_SSID_LEN, ssid);
+                if (c >= '1' && c < '1' + shown) {
+                    ssid = names[c - '1'];
+                    return true;
+                }
             }
         }
         delay(10);
     }
+    return false;
 }
 
-void wifiPromptCreds(String& ssid, String& pass) {
-    ssid = pickSsid();
-    pass = promptLine("WiFi password:", true, true, MAX_PASS_LEN);  // empty = open network
+bool wifiPromptCreds(String& ssid, String& pass) {
+    // empty password = open network
+    if (!pickSsid(ssid) || !promptLine("WiFi password:", true, true, MAX_PASS_LEN, pass)) {
+        Serial.println("[wifi] setup timed out, booting offline");
+        return false;
+    }
     saveCreds(ssid, pass);
     Serial.printf("[wifi] saved credentials for SSID \"%s\"\n", ssid.c_str());
+    return true;
 }
 
 bool wifiAskReenter(uint32_t timeoutMs) {

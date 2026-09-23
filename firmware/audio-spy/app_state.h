@@ -10,7 +10,7 @@
 struct AppState {
     SemaphoreHandle_t mutex = nullptr;
 
-    float thresholdRms = 0.02f;  // normalized 0.0-1.0, compared against each second's RMS
+    float thresholdRms = 0.0f;  // normalized 0.0-1.0, compared against each second's RMS; set from Config at boot
     bool stealthMode = false;
     bool paused = false;
     bool bypassThreshold = false;  // keep everything while on; not persisted

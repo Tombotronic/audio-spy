@@ -6,8 +6,9 @@
 // Connects to WiFi (blocks up to timeoutMs). Returns true on success.
 bool netConnectWifi(uint32_t timeoutMs = 15000);
 
-// Syncs system time via NTP (blocks up to timeoutMs). Returns true once
-// getLocalTime() reports a plausible (post-2020) time.
+// Syncs system time via NTP (blocks up to timeoutMs, not at all while WiFi
+// is down). Returns true once getLocalTime() reports a plausible
+// (post-2020) time.
 bool netSyncTime(uint32_t timeoutMs = 10000);
 
 // Call from loop(): keeps AppState's WiFi/IP/time-synced fields current

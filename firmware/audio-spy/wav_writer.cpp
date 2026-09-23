@@ -21,6 +21,7 @@ struct WavHeader {
     char data[4] = {'d', 'a', 't', 'a'};
     uint32_t dataSize = 0;
 };
+static_assert(sizeof(WavHeader) == WAV_HEADER_BYTES, "WAV header must be 44 bytes, unpadded");
 
 bool WavWriter::beginRun(const String& path) {
     if (_open) endRun();

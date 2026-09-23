@@ -1,0 +1,60 @@
+# Pushing a tag like v0.9.0 builds the firmware and publishes it as a
+# GitHub release. The tag must match FIRMWARE_VERSION in version.h.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write  # create the release
+
+env:
+  # Pinned: esp32 cores built on ESP-IDF 5.5+ (3.3.x) break the mic (see README).
+  FQBN: esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB
+  CORE: esp32:esp32@3.2.0
+  LIBS: M5Cardputer@1.1.1 M5Unified@0.2.23 M5GFX@0.2.30 ArduinoJson@7.4.3
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches FIRMWARE_VERSION
+        run: |
+          version=$(sed -n 's/^#define FIRMWARE_VERSION "\(.*\)"$/\1/p' firmware/audio-spy/version.h)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match FIRMWARE_VERSION $version in version.h"
+            exit 1
+          fi
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install core and libraries
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install "$CORE"
+          arduino-cli lib install $LIBS
+
+      - name: Build
+        run: arduino-cli compile --fqbn "$FQBN" --output-dir build firmware/audio-spy
+
+      - name: Collect release files
+        run: |
+          mkdir dist
+          cp build/audio-spy.ino.merged.bin "dist/audio-spy-$GITHUB_REF_NAME.bin"
+          cp build/audio-spy.ino.bin "dist/audio-spy-$GITHUB_REF_NAME-app.bin"
+          cd dist && sha256sum *.bin > SHA256SUMS.txt && cat SHA256SUMS.txt
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* --title "Audio Spy $GITHUB_REF_NAME" --notes "
+          Flash the full image (bootloader, partition table and app) at offset 0x0:
+
+              esptool.py --chip esp32s3 --port <port> write_flash 0x0 audio-spy-$GITHUB_REF_NAME.bin
+
+          This covers the whole flash, so it also erases the saved WiFi network (set it up again on the device's keyboard). To update and keep it, flash \`audio-spy-$GITHUB_REF_NAME-app.bin\` at 0x10000 instead. Recordings and config.json on the SD card are untouched either way.
+          " --generate-notes

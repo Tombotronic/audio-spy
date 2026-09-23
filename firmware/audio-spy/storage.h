@@ -1,6 +1,9 @@
 #pragma once
 
 #include <Arduino.h>
+#include <FS.h>
+
+#include <functional>
 
 #define RECORDINGS_DIR "/audio-spy"
 // Where RECORDINGS_DIR lived before the rename; moved on boot if present.
@@ -21,6 +24,11 @@ bool storageInit();
 
 uint64_t storageFreeBytes();
 uint64_t storageTotalBytes();
+
+// Calls fn for every *.wav file in RECORDINGS_DIR, one open entry at a
+// time, so nothing proportional to the number of recordings is held in RAM
+// (a big card collects thousands of them; this unit has no PSRAM).
+void storageForEachRecording(const std::function<void(File& entry)>& fn);
 
 // Deletes the oldest *.wav files in RECORDINGS_DIR until free space is
 // back above LOW_SPACE_MARGIN_BYTES, or there's nothing left to delete.

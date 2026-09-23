@@ -11,6 +11,7 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 
 - Audio is captured continuously in ~10 second chunks, measuring the RMS level of every second.
 - Seconds at/above the threshold are kept, plus 2 seconds before and after (to protect soft onsets/tails). Silent pauses of up to 5 seconds between kept parts are kept too, so one conversation stays in one WAV file; longer silence ends the file.
+- A continuous recording is split into a new file every hour (FAT32 can't hold files of 4 GB or more, and the web UI loads a whole file to play it).
 - If the device reboots mid-recording, the file is repaired on the next boot (everything that reached the card is kept).
 - Capture never pauses for these decisions: each chunk is judged one chunk later (the pre-roll needs to know what comes next), so nothing is skipped live, only discarded in hindsight. As a result, the REC state appears 10–20 seconds after a sound starts; the file itself still begins 2 seconds before it.
 
@@ -49,6 +50,31 @@ returns constant/near-zero samples (no error, no crash — it just looks like
 silence forever). 3.2.0 is built on IDF v5.4.1, which is unaffected.
 Install with: `arduino-cli core install esp32:esp32@3.2.0`
 
+### Versioned binary
+
+The firmware version is `FIRMWARE_VERSION` in `firmware/audio-spy/version.h`.
+It's shown on the boot screen, in the web UI's settings and in `/status`. To
+build a flashable image:
+
+```
+arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB --output-dir firmware/build firmware/audio-spy
+```
+
+`firmware/build/audio-spy.ino.merged.bin` is the full image (bootloader,
+partition table and app), flashed at offset `0x0`:
+
+```
+esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX write_flash 0x0 audio-spy-v0.9.0.bin
+```
+
+The full image covers the whole flash, so it also erases the saved WiFi network.
+To update and keep it, flash `audio-spy.ino.bin` (the app alone) at `0x10000`.
+Recordings and `config.json` on the SD card are untouched either way.
+
+Pushing a tag `vX.Y.Z` builds both images on GitHub Actions
+(`.github/workflows/release.yml`) and publishes them as a release. The tag must
+match `FIRMWARE_VERSION`.
+
 The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
 automatically) and NTP server are set in `firmware/audio-spy/config.h`.
 
@@ -62,7 +88,9 @@ NVS flash (plaintext, never sent over the network) and survive reflashing.
 
 If connecting fails at boot (wrong password, different network), press **W**
 within 10 seconds to pick a network again; any other key or waiting it out
-boots offline and keeps recording.
+boots offline and keeps recording. The setup screens themselves give up after 2
+minutes without a key press and boot offline too, so an unattended restart
+(e.g. after a power cut) never stops recording.
 
 To switch networks while it's connected, use **Settings → WiFi → Forget…** in
 the web UI. It clears the saved network and restarts into the setup screen. A
@@ -74,9 +102,9 @@ recording in progress is repaired on boot, the same as after a power cut.
 
 ## Storage
 
-Files are written to `/audio-spy/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
+Files are written to `/audio-spy/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops. `unsynced-*` files count as the oldest, since their real time is unknown.
 
-Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark).
+Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark). If the file can't be parsed, it's kept as `config.json.bad` and defaults are used, so check the password after hand-editing it.
 
 ## Web interface
 
@@ -85,13 +113,15 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 **Change the default password** before using it on a shared network: edit
 `webPassword` in `/audio-spy/config.json` on the SD card and reboot. The page
 uses plain HTTP, so it's meant for your own local network only; don't expose
-it to the internet.
+it to the internet. Every POST must carry the header `X-Audio-Spy: 1` (the page
+sends it), so other websites can't make your logged-in browser change settings or
+delete recordings.
 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
-- Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
+- Settings panel: IP address, firmware version, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
 
 Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Spy" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
