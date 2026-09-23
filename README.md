@@ -79,8 +79,10 @@ Recordings and `config.json` on the SD card are untouched.
 
 Pushing a tag `vX.Y.Z` builds the firmware on GitHub Actions
 (`.github/workflows/release.yml`) and publishes the full image as a release
-(`audio-spy-vX.Y.Z.bin`, with the notes from `.github/release-notes.md`). The
-tag must match `FIRMWARE_VERSION`.
+(`audio-spy-vX.Y.Z.bin`). Its notes are the version's section from
+[`CHANGELOG.md`](CHANGELOG.md) followed by `.github/release-notes.md`. The tag
+must match `FIRMWARE_VERSION`, and `CHANGELOG.md` must have a `## vX.Y.Z`
+section, or nothing is published.
 
 The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
 automatically) and NTP server are set in `firmware/audio-spy/config.h`.

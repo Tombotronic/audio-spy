@@ -26,12 +26,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Check tag matches FIRMWARE_VERSION
+      - name: Check tag matches FIRMWARE_VERSION and CHANGELOG.md
         if: github.ref_type == 'tag'
         run: |
           version=$(sed -n 's/^#define FIRMWARE_VERSION "\(.*\)"$/\1/p' firmware/audio-spy/version.h)
           if [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::Tag $GITHUB_REF_NAME doesn't match FIRMWARE_VERSION $version in version.h"
+            exit 1
+          fi
+          # This version's section: from "## vX.Y.Z ..." up to the next "## ".
+          awk -v tag="$GITHUB_REF_NAME" '/^## /{f = ($2 == tag); next} f' CHANGELOG.md > changes.md
+          if ! grep -q '[^[:space:]]' changes.md; then
+            echo "::error::CHANGELOG.md has no section for $GITHUB_REF_NAME"
             exit 1
           fi
 
@@ -60,6 +66,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sed "s/VERSION/$GITHUB_REF_NAME/g" .github/release-notes.md > notes.md
+          { echo "## What's new"; cat changes.md; echo; sed "s/VERSION/$GITHUB_REF_NAME/g" .github/release-notes.md; } > notes.md
           gh release create "$GITHUB_REF_NAME" "audio-spy-$GITHUB_REF_NAME.bin" --title "Audio Spy $GITHUB_REF_NAME" \
             --notes-file notes.md --generate-notes
