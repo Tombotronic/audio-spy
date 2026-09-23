@@ -17,8 +17,8 @@ Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js
 
 - Audio is captured continuously in ~10 second chunks, measuring the RMS level of every second.
 - Seconds at/above the threshold are kept, plus 2 seconds before and after (to protect soft onsets/tails). Silent pauses of up to 5 seconds between kept parts are kept too, so one conversation stays in one WAV file; longer silence ends the file.
-- A continuous recording is split into a new file every hour (FAT32 can't hold files of 4 GB or more, and the web UI loads a whole file to play it).
-- If the device reboots mid-recording, the file is repaired on the next boot (everything that reached the card is kept).
+- A continuous recording is split into a new file every 10 minutes (~19 MB), since the web UI downloads a whole file over WiFi to play it.
+- If the device reboots mid-recording, the file is repaired on the next boot (everything that reached the card is kept). A file that holds no audio at all is deleted.
 - Capture never pauses for these decisions: each chunk is judged one chunk later (the pre-roll needs to know what comes next), so nothing is skipped live, only discarded in hindsight. As a result, the REC state appears 10–20 seconds after a sound starts; the file itself still begins 2 seconds before it.
 
 ## Hardware
@@ -125,7 +125,7 @@ delete recordings.
 
 - List recordings (shown as `dd.mm.yyyy hh:mm:ss`) with a coarse waveform, play in-browser (normalised loudness), download, and delete
 - Threshold slider in 1 dB steps under a live dB level meter
-- Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
+- Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live, and the Resume button is highlighted in yellow like an active Bypass
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
 - Settings panel: IP address, firmware version, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
 
@@ -133,7 +133,7 @@ Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It 
 
 ## On-device display
 
-Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress while starting (about 20 seconds, mostly WiFi and NTP; 10 seconds more if WiFi fails, see [WiFi setup](#wifi-setup)). Goes dark when stealth mode is enabled.
+Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress and the firmware version while starting (about 20 seconds, mostly WiFi and NTP). If WiFi fails, it's about 25 seconds: the 15 second connection timeout plus 10 seconds to press **W** (the NTP wait is skipped offline, see [WiFi setup](#wifi-setup)). Goes dark when stealth mode is enabled.
 
 Press **I** to show the device's IP address (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
 

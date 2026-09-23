@@ -86,7 +86,8 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
   button.danger.solid { background: var(--danger); color: #fff; border-color: var(--danger); }
   button:disabled { opacity: 0.4; cursor: default; }
   #settingsBtn { font-size: 1.2em; padding: 4px 10px; }
-  #bypassBtn.active { background: var(--accent); border-color: var(--accent); color: #000; }
+  /* Highlighted while in effect: Bypass on, or paused (shows "Resume"). */
+  #bypassBtn.active, #pauseBtn.active { background: var(--accent); border-color: var(--accent); color: #000; }
   #state.st-listening { color: var(--ok); }
   #state.st-rec { color: var(--rec); }
   #state.st-paused { color: var(--accent); }
@@ -347,7 +348,10 @@ async function refreshStatus() {
     document.getElementById('thresholdVal').textContent = slider.value + ' dB';
   }
   document.getElementById('stealth').checked = s.stealthMode;
-  document.getElementById('pauseBtn').textContent = s.paused ? 'Resume' : 'Pause';
+  const pauseBtn = document.getElementById('pauseBtn');
+  pauseBtn.textContent = s.paused ? 'Resume' : 'Pause';
+  pauseBtn.classList.toggle('active', s.paused);
+  pauseBtn.setAttribute('aria-pressed', s.paused);
   showBypass(s.bypassThreshold);
   // Nothing is recorded while paused, so bypass has nothing to act on.
   document.getElementById('bypassBtn').disabled = s.paused;

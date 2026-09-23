@@ -38,5 +38,6 @@ private:
 // A run in progress is recorded in a marker file on the SD card (removed by
 // endRun()). Call once at boot: if the marker is still there, that run was
 // cut off by a reboot. Its header is then fixed to cover every byte that
-// reached the card, or the file is deleted if it holds no audio.
+// reached the card, or the file is deleted if it holds no audio. Any other
+// recording without audio (header only or 0 bytes) is deleted too.
 void wavRecoverInterruptedRun();

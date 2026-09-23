@@ -10,11 +10,11 @@
 
 static_assert(WAV_SAMPLE_RATE == CHUNK_SAMPLE_RATE, "runs are copied byte for byte from chunks");
 
-// Runs are split after this much audio: FAT32 can't hold a file of 4 GiB or
-// more (reached after ~37 h of Bypass Threshold), and the web UI decodes a
-// whole file in the browser to play it. A multiple of BYTES_PER_SECOND, so
-// files split on whole seconds.
-static constexpr uint32_t MAX_RUN_BYTES = 3600 * BYTES_PER_SECOND;
+// Runs are split after 10 minutes of audio (~19 MB): the web UI downloads a
+// whole file over the ESP32's slow WiFi and decodes it in the browser to
+// play it, and FAT32 can't hold a file of 4 GiB or more anyway. A multiple
+// of BYTES_PER_SECOND, so files split on whole seconds.
+static constexpr uint32_t MAX_RUN_BYTES = 10 * 60 * BYTES_PER_SECOND;
 
 static float currentThreshold() {
     AppStateLock lock;
@@ -122,8 +122,11 @@ static String unusedRunName(time_t audioStart) {
 static void startRun(time_t audioStart) {
     storageEnforceRollingLimit();
     s_runName = unusedRunName(audioStart);
+    // Registered before the file exists, so the web server never lists it
+    // (empty, and deletable) as a finished recording while it's created.
+    setCurrentFile(s_runName);
     s_runActive = s_writer.beginRun(runPath(s_runName));
-    if (s_runActive) setCurrentFile(s_runName);
+    if (!s_runActive) setCurrentFile("");
 }
 
 static void endRun() {

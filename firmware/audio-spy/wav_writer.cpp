@@ -26,20 +26,23 @@ static_assert(sizeof(WavHeader) == WAV_HEADER_BYTES, "WAV header must be 44 byte
 bool WavWriter::beginRun(const String& path) {
     if (_open) endRun();
 
-    _file = SD.open(path, FILE_WRITE);
-    if (!_file) {
-        Serial.printf("[wav] failed to open %s for writing\n", path.c_str());
-        return false;
-    }
-
-    WavHeader header;  // placeholder sizes, fixed up in endRun()
-    _file.write((const uint8_t*)&header, sizeof(header));
-
+    // Marker first: a reset right after the WAV is created must still find
+    // it at boot (otherwise an empty file stays on the card).
     File marker = SD.open(RUN_MARKER_PATH, FILE_WRITE);
     if (marker) {
         marker.print(path);
         marker.close();
     }
+
+    _file = SD.open(path, FILE_WRITE);
+    if (!_file) {
+        Serial.printf("[wav] failed to open %s for writing\n", path.c_str());
+        SD.remove(RUN_MARKER_PATH);
+        return false;
+    }
+
+    WavHeader header;  // placeholder sizes, fixed up in endRun()
+    _file.write((const uint8_t*)&header, sizeof(header));
 
     _path = path;
     _dataBytesWritten = 0;
@@ -97,7 +100,33 @@ void WavWriter::endRun() {
     _open = false;
 }
 
+static void recoverMarkedRun();
+
+// At boot nothing is being recorded, so a WAV holding no audio is left over
+// from a reset (e.g. before the run marker existed). Removed in batches, like
+// the web server's delete all, so the name list stays small.
+static void removeEmptyRecordings() {
+    static constexpr int BATCH = 16;
+    for (;;) {
+        String batch[BATCH];
+        int count = 0;
+        storageForEachRecording([&](File& entry) {
+            if (count < BATCH && entry.size() <= sizeof(WavHeader)) batch[count++] = entry.name();
+        });
+        for (int i = 0; i < count; i++) {
+            SD.remove(String(RECORDINGS_DIR) + "/" + batch[i]);
+            Serial.printf("[wav] removed empty recording: %s\n", batch[i].c_str());
+        }
+        if (count < BATCH) return;
+    }
+}
+
 void wavRecoverInterruptedRun() {
+    recoverMarkedRun();
+    removeEmptyRecordings();
+}
+
+static void recoverMarkedRun() {
     File marker = SD.open(RUN_MARKER_PATH, FILE_READ);
     if (!marker) return;
     String path = marker.readString();
