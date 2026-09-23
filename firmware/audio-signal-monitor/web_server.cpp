@@ -88,6 +88,8 @@ static void handleFiles() {
 
     String out;
     serializeJson(doc, out);
+    // Live data: Safari otherwise reuses a stale list (e.g. after Delete all).
+    server.sendHeader("Cache-Control", "no-store");
     server.send(200, "application/json", out);
 }
 
@@ -234,6 +236,7 @@ static void handleStatus() {
 
     String out;
     serializeJson(doc, out);
+    server.sendHeader("Cache-Control", "no-store");
     server.send(200, "application/json", out);
 }
 

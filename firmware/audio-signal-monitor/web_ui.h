@@ -257,7 +257,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 
 <script>
 async function api(path, opts) {
-  const res = await fetch(path, opts);
+  const res = await fetch(path, { cache: 'no-store', ...opts });
   if (!res.ok) throw new Error(path + ' -> ' + res.status);
   return res;
 }
@@ -347,6 +347,7 @@ const rows = {};                   // name -> { file, canvas, playBtn, timeEl }
 let fetchQueue = Promise.resolve();
 let listSignature = null;  // null = force a rebuild ('' is a valid, empty list)
 let lastFiles = [];
+let filesSeq = 0;          // only the newest /files response may update the list
 
 function key(f) { return f.name + '|' + f.size; }
 
@@ -571,7 +572,9 @@ const observer = new IntersectionObserver((entries) => {
 });
 
 async function refreshFiles() {
+  const seq = ++filesSeq;
   const files = await (await api('/files')).json();
+  if (seq !== filesSeq) return;         // a newer refresh started meanwhile
   files.sort((a, b) => b.name.localeCompare(a.name));
   lastFiles = files;
   updateDeleteAllInfo();
