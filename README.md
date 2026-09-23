@@ -9,10 +9,7 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 
 ## Install
 
-Download the firmware from the [latest release](https://github.com/Tombotronic/audio-spy/releases/latest):
-
-- **First install** (or the Cardputer runs other firmware): `audio-spy-vX.Y.Z-full.bin`, flashed at `0x0`. It erases the saved WiFi network.
-- **Update** (it already runs Audio Spy): `audio-spy-vX.Y.Z-update.bin`, flashed at `0x10000`. It keeps the WiFi network.
+Download `audio-spy-vX.Y.Z.bin` from the [latest release](https://github.com/Tombotronic/audio-spy/releases/latest) and flash it at address `0x0`, both for a first install and for updates. It erases the saved WiFi network, so you set that up again on the device afterwards.
 
 Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js/) (Chrome/Edge) or with `esptool.py`. The release notes have step-by-step instructions. Then insert a FAT32 SD card and set up [WiFi](#wifi-setup) on the device. To build it yourself instead, see [Build](#build).
 
@@ -76,14 +73,13 @@ partition table and app), flashed at offset `0x0`:
 esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX write_flash 0x0 audio-spy-v0.9.0.bin
 ```
 
-The full image covers the whole flash, so it also erases the saved WiFi network.
-To update and keep it, flash `audio-spy.ino.bin` (the app alone) at `0x10000`.
-Recordings and `config.json` on the SD card are untouched either way.
+It covers the whole flash, so it also erases the saved WiFi network.
+Recordings and `config.json` on the SD card are untouched.
 
-Pushing a tag `vX.Y.Z` builds both images on GitHub Actions
-(`.github/workflows/release.yml`) and publishes them as a release
-(`audio-spy-vX.Y.Z-full.bin` and `-update.bin`, with the notes from
-`.github/release-notes.md`). The tag must match `FIRMWARE_VERSION`.
+Pushing a tag `vX.Y.Z` builds the firmware on GitHub Actions
+(`.github/workflows/release.yml`) and publishes the full image as a release
+(`audio-spy-vX.Y.Z.bin`, with the notes from `.github/release-notes.md`). The
+tag must match `FIRMWARE_VERSION`.
 
 The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
 automatically) and NTP server are set in `firmware/audio-spy/config.h`.

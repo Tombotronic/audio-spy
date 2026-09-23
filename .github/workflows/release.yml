@@ -43,9 +43,7 @@ jobs:
       - name: Collect release files
         run: |
           mkdir dist
-          cp build/audio-spy.ino.merged.bin "dist/audio-spy-$GITHUB_REF_NAME-full.bin"
-          cp build/audio-spy.ino.bin "dist/audio-spy-$GITHUB_REF_NAME-update.bin"
-          cd dist && sha256sum *.bin > SHA256SUMS.txt && cat SHA256SUMS.txt
+          cp build/audio-spy.ino.merged.bin "dist/audio-spy-$GITHUB_REF_NAME.bin"
 
       - name: Publish release
         env:
