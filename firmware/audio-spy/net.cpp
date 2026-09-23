@@ -2,11 +2,21 @@
 
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#include <mdns.h>
 #include <time.h>
 
 #include "app_state.h"
 #include "config.h"
 #include "wifi_setup.h"
+
+static bool s_mdnsRunning = false;
+
+String netMdnsName() {
+    if (!s_mdnsRunning) return "";
+    char name[MDNS_NAME_BUF_LEN];
+    if (mdns_hostname_get(name) != ESP_OK) return "";
+    return String(name) + ".local";
+}
 
 static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutMs) {
     WiFi.mode(WIFI_STA);
@@ -50,6 +60,7 @@ bool netConnectWifi(uint32_t timeoutMs) {
     if (haveCreds) {
         if (MDNS.begin(HOSTNAME)) {
             MDNS.addService("http", "tcp", 80);
+            s_mdnsRunning = true;
             Serial.println("[net] mDNS: http://" HOSTNAME ".local");
         } else {
             Serial.println("[net] mDNS failed to start");

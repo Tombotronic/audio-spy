@@ -113,11 +113,14 @@ static void removeEmptyRecordings() {
         storageForEachRecording([&](File& entry) {
             if (count < BATCH && entry.size() <= sizeof(WavHeader)) batch[count++] = entry.name();
         });
+        int removed = 0;
         for (int i = 0; i < count; i++) {
-            SD.remove(String(RECORDINGS_DIR) + "/" + batch[i]);
+            if (!SD.remove(String(RECORDINGS_DIR) + "/" + batch[i])) continue;
+            removed++;
             Serial.printf("[wav] removed empty recording: %s\n", batch[i].c_str());
         }
-        if (count < BATCH) return;
+        // Done, or stuck (e.g. a write-protected card): don't loop forever.
+        if (count < BATCH || removed == 0) return;
     }
 }
 

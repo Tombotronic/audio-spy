@@ -15,6 +15,11 @@ bool netSyncTime(uint32_t timeoutMs = 10000);
 // (WiFi reconnects on its own, and NTP keeps retrying after boot).
 void netRefreshState();
 
+// The name the web UI is reachable at, e.g. "audio-spy.local": what mDNS
+// actually announces (a second device on the network gets e.g.
+// "audio-spy-2.local"), or "" if mDNS isn't running.
+String netMdnsName();
+
 // Timestamp-based filename for `when` (default: now), e.g.
 // "2026-09-22_14-05-30.wav". Falls back to
 // an incrementing counter (e.g. "unsynced-000123.wav") if time hasn't been

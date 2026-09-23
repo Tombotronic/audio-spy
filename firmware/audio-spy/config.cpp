@@ -2,15 +2,6 @@
 
 #include <ArduinoJson.h>
 #include <SD.h>
-#include <esp_random.h>
-
-static String randomSecret() {
-    uint8_t bytes[16];
-    esp_fill_random(bytes, sizeof(bytes));
-    char hex[sizeof(bytes) * 2 + 1];
-    for (size_t i = 0; i < sizeof(bytes); i++) sprintf(hex + i * 2, "%02x", bytes[i]);
-    return String(hex);
-}
 
 Config configLoad() {
     Config cfg;
@@ -21,7 +12,6 @@ Config configLoad() {
     File file = SD.open(CONFIG_PATH, FILE_READ);
     if (!file) {
         Serial.println("[config] no config.json found, creating defaults");
-        cfg.sessionSecret = randomSecret();
         configSave(cfg);
         return cfg;
     }
@@ -35,7 +25,6 @@ Config configLoad() {
                       err.c_str());
         SD.remove(CONFIG_BAD_PATH);
         SD.rename(CONFIG_PATH, CONFIG_BAD_PATH);
-        cfg.sessionSecret = randomSecret();
         configSave(cfg);
         return cfg;
     }
@@ -43,11 +32,7 @@ Config configLoad() {
     cfg.threshold = doc["threshold"] | cfg.threshold;
     cfg.stealthMode = doc["stealthMode"] | cfg.stealthMode;
     cfg.webPassword = doc["webPassword"] | cfg.webPassword;
-    cfg.sessionSecret = doc["sessionSecret"] | cfg.sessionSecret;
-    if (cfg.sessionSecret.length() == 0) {  // config.json from before this setting
-        cfg.sessionSecret = randomSecret();
-        configSave(cfg);
-    }
+    cfg.sessionKey = doc["sessionKey"] | cfg.sessionKey;
     return cfg;
 }
 
@@ -56,7 +41,7 @@ bool configSave(const Config& cfg) {
     doc["threshold"] = cfg.threshold;
     doc["stealthMode"] = cfg.stealthMode;
     doc["webPassword"] = cfg.webPassword;
-    doc["sessionSecret"] = cfg.sessionSecret;
+    doc["sessionKey"] = cfg.sessionKey;
 
     File file = SD.open(CONFIG_TMP_PATH, FILE_WRITE);
     if (!file) {
