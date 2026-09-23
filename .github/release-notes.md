@@ -14,4 +14,4 @@ esptool.py --chip esp32s3 --port <port> write_flash 0x0 audio-spy-VERSION.bin
 
 (`<port>` is e.g. `/dev/cu.usbmodem2101` on macOS, `COM5` on Windows)
 
-Then insert a FAT32 SD card and follow [WiFi setup](https://github.com/Tombotronic/audio-spy#wifi-setup) in the README. You only need the *Source code* archives to build the firmware yourself.
+An SD card formatted as FAT32 must be in the slot (cards over 32 GB usually come as exFAT and need reformatting), or the device stops at boot. Then follow [WiFi setup](https://github.com/Tombotronic/audio-spy#wifi-setup) in the README. You only need the *Source code* archives to build the firmware yourself.

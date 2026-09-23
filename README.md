@@ -11,7 +11,7 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 
 Download `audio-spy-vX.Y.Z.bin` from the [latest release](https://github.com/Tombotronic/audio-spy/releases/latest) and flash it at address `0x0`, both for a first install and for updates. It erases the saved WiFi network, so you set that up again on the device afterwards.
 
-Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js/) (Chrome/Edge) or with `esptool.py`. The release notes have step-by-step instructions. Then insert a FAT32 SD card and set up [WiFi](#wifi-setup) on the device. To build it yourself instead, see [Build](#build).
+Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js/) (Chrome/Edge) or with `esptool.py`. The release notes have step-by-step instructions. An SD card formatted as **FAT32** must be in the slot, or the device stops at boot ("SD card missing!"). Cards over 32 GB usually come as exFAT and need reformatting. Then set up [WiFi](#wifi-setup) on the device. To build it yourself instead, see [Build](#build).
 
 ## How it works
 
@@ -23,8 +23,9 @@ Flash it in the browser with [esptool-js](https://espressif.github.io/esptool-js
 
 ## Hardware
 
-- M5Stack Cardputer Adv (built-in SD slot; this unit has no PSRAM)
-- Arduino framework, with these libraries (tested versions; install with `arduino-cli lib install`):
+- M5Stack Cardputer Adv (built-in SD slot; no PSRAM, so audio is buffered on the SD card)
+- A FAT32 SD card
+- Arduino framework via `arduino-cli` 1.5.1, with these libraries (tested versions; install with `arduino-cli lib install`):
   - `M5Cardputer` 1.1.1
   - `M5Unified` 0.2.23 and `M5GFX` 0.2.30
   - `ArduinoJson` 7.4.3
@@ -70,7 +71,7 @@ arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,Flash
 partition table and app), flashed at offset `0x0`:
 
 ```
-esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX write_flash 0x0 audio-spy-v0.9.0.bin
+esptool.py --chip esp32s3 --port /dev/cu.usbmodemXXXX write_flash 0x0 firmware/build/audio-spy.ino.merged.bin
 ```
 
 It covers the whole flash, so it also erases the saved WiFi network.
@@ -90,7 +91,8 @@ WiFi credentials are entered on the device, not compiled in. On first boot it
 scans and lists nearby networks (strongest first): press **1–6** to pick one, or
 **0** to type a hidden SSID (confirm with **ok**, the enter key), then type the
 password and press **ok** (leave it empty for an open network). They're saved in
-NVS flash (plaintext, never sent over the network) and survive reflashing.
+NVS flash (plaintext, never sent over the network). They survive an
+`arduino-cli upload`, but flashing the full release image erases them.
 
 If connecting fails at boot (wrong password, different network), press **W**
 within 10 seconds to pick a network again; any other key or waiting it out
@@ -137,11 +139,11 @@ Works as an iPhone home screen app: in Safari, open `http://audio-spy.local`, th
 
 Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress and the firmware version while starting (about 20 seconds, mostly WiFi and NTP). If WiFi fails, it's about 25 seconds: the 15 second connection timeout plus 10 seconds to press **W** (the NTP wait is skipped offline, see [WiFi setup](#wifi-setup)). Goes dark when stealth mode is enabled.
 
-Press **I** to show the device's IP address and `audio-spy.local` (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
+Press **I** to show the device's IP address and its `.local` name, normally `audio-spy.local` (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
 
 ## Status
 
-Firmware implemented and running on the device.
+Working and in daily use. The current version and its changes are on the [releases page](https://github.com/Tombotronic/audio-spy/releases).
 
 ## License
 
