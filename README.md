@@ -66,9 +66,9 @@ recording in progress is repaired on boot, the same as after a power cut.
 
 ## Storage
 
-Files are written to `/audio-signal-monitor/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
+Files are written to `/audio-spy/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
 
-Settings live in `/audio-signal-monitor/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark).
+Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark).
 
 ## Web interface
 

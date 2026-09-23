@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 
-#define RECORDINGS_DIR "/audio-signal-monitor"
+#define RECORDINGS_DIR "/audio-spy"
+// Where RECORDINGS_DIR lived before the rename; moved on boot if present.
+#define LEGACY_RECORDINGS_DIR "/audio-signal-monitor"
 
 // SD SPI pins (M5Cardputer Adv built-in slot)
 #define SD_SPI_SCK_PIN 40

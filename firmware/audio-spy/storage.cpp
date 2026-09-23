@@ -18,6 +18,16 @@ bool storageInit() {
         return false;
     }
 
+    // One-time move from the project's old name, so recordings and
+    // config.json survive the rename.
+    if (!SD.exists(RECORDINGS_DIR) && SD.exists(LEGACY_RECORDINGS_DIR)) {
+        if (SD.rename(LEGACY_RECORDINGS_DIR, RECORDINGS_DIR)) {
+            Serial.println("[storage] moved " LEGACY_RECORDINGS_DIR " to " RECORDINGS_DIR);
+        } else {
+            Serial.println("[storage] failed to move " LEGACY_RECORDINGS_DIR);
+        }
+    }
+
     // Idempotent: SD.mkdir returns true if the dir already exists too.
     if (!SD.exists(RECORDINGS_DIR)) {
         if (!SD.mkdir(RECORDINGS_DIR)) {

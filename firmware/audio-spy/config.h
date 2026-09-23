@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#define CONFIG_PATH "/audio-signal-monitor/config.json"
+#define CONFIG_PATH "/audio-spy/config.json"
 
 // NTP time sync
 #define NTP_SERVER "pool.ntp.org"
