@@ -57,7 +57,7 @@ static void handleIcon() {
 
 static void handleManifest() {
     server.send(200, "application/manifest+json",
-                "{\"name\":\"Audio Signal Monitor\",\"short_name\":\"Audio Monitor\","
+                "{\"name\":\"Audio Spy\",\"short_name\":\"Audio Spy\","
                 "\"start_url\":\"/\",\"display\":\"standalone\","
                 "\"background_color\":\"#111111\",\"theme_color\":\"#111111\","
                 "\"icons\":[{\"src\":\"/icon.png\",\"sizes\":\"180x180\",\"type\":\"image/png\"}]}");

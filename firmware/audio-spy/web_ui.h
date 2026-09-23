@@ -13,12 +13,12 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Audio Signal Monitor</title>
+<title>Audio Spy</title>
 <!-- Add to Home Screen: runs full screen with its own icon and name. -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<meta name="apple-mobile-web-app-title" content="Audio Monitor">
+<meta name="apple-mobile-web-app-title" content="Audio Spy">
 <meta name="theme-color" content="#f6f6f7" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)">
 <meta name="format-detection" content="telephone=no">
@@ -169,7 +169,7 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <div class="row">
-    <h1>Audio Signal Monitor</h1>
+    <h1>Audio Spy</h1>
     <button id="settingsBtn" aria-label="Settings" title="Settings">⚙</button>
   </div>
 

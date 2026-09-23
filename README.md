@@ -1,4 +1,4 @@
-# Audio Signal Monitor
+# Audio Spy
 
 Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stack.com/en/core/Cardputer-Adv). Records continuously, keeps only the segments that contain sound, and exposes a web page to browse, audition, and collect the captured files.
 
@@ -20,8 +20,8 @@ Always-on audio monitor built on the [M5Stack Cardputer Adv](https://docs.m5stac
 Uses `arduino-cli` with board FQBN `esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB`:
 
 ```
-arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-signal-monitor
-arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-signal-monitor
+arduino-cli compile --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-spy
+arduino-cli upload -p /dev/cu.usbmodemXXXX --fqbn esp32:esp32:m5stack_cardputer:CDCOnBoot=default,FlashSize=8M,PartitionScheme=default_8MB firmware/audio-spy
 ```
 
 **Keep USB CDC On Boot disabled** (`CDCOnBoot=default`; the board's default is
@@ -42,7 +42,7 @@ silence forever). 3.2.0 is built on IDF v5.4.1, which is unaffected.
 Install with: `arduino-cli core install esp32:esp32@3.2.0`
 
 The time zone (`TZ_INFO`, a POSIX rule so daylight saving switches
-automatically) and NTP server are set in `firmware/audio-signal-monitor/config.h`.
+automatically) and NTP server are set in `firmware/audio-spy/config.h`.
 
 ## WiFi setup
 
@@ -80,7 +80,7 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
 - Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
 
-Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Monitor" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
+Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Spy" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
 ## On-device display
 
