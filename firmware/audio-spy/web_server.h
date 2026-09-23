@@ -1,8 +1,10 @@
 #pragma once
 
 // Starts the HTTP server (port 80). Every route except the icon and the
-// manifest requires HTTP Basic Auth against config.webPassword; every POST
-// also requires the header "X-Audio-Spy: 1" (CSRF protection). Routes:
+// manifest requires HTTP Basic Auth against config.webPassword, or the login
+// cookie a successful Basic Auth sets (valid a year; keeps iOS home-screen
+// apps logged in). Every POST also requires the header "X-Audio-Spy: 1"
+// (CSRF protection). Routes:
 //   GET  /                    HTML/JS UI
 //   GET  /icon.png            home screen icon (no auth)
 //   GET  /manifest.json       web app manifest (no auth)
@@ -12,7 +14,7 @@
 //   GET  /peaks?name=X&n=N    coarse waveform: N peak values (JSON array)
 //   POST /delete?name=X       delete a recording
 //   POST /deleteall           delete all recordings except the open one
-//   GET  /status              JSON: recording/paused/levels/threshold/stealth/bypass/space/ip/uptime/battery/version
+//   GET  /status              JSON: recording/paused/levels/threshold/stealth/bypass/space/ip/hostname/uptime/battery/version
 //   POST /threshold  value=F  set + persist RMS threshold (0..1)
 //   POST /stealth    on=0|1   set + persist stealth mode
 //   POST /pause               pause the record-analyze-decide loop

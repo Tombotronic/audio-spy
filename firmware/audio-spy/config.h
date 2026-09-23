@@ -12,12 +12,21 @@
 // Europe), so daylight saving switches by itself.
 #define TZ_INFO "CET-1CEST,M3.5.0,M10.5.0/3"
 
+// Network name: the web UI is reachable at http://audio-spy.local (mDNS),
+// and the router sees this as the device's DHCP hostname.
+#define HOSTNAME "audio-spy"
+
 struct Config {
     // Normalized RMS (0.0-1.0), compared against each second's RMS. Only the
     // first-boot default; normally set from the web UI's threshold slider.
     float threshold = 0.0015f;
     bool stealthMode = false;
     String webPassword = "cardputer";
+    // Random, generated on first boot: the web UI's login cookie is derived
+    // from it and webPassword. Kept on the SD card (not in flash), so a
+    // firmware update doesn't log everyone out; changing it or the password
+    // does.
+    String sessionSecret;
 };
 
 // Loads config from CONFIG_PATH, creating the file with defaults if it

@@ -110,11 +110,13 @@ recording in progress is repaired on boot, the same as after a power cut.
 
 Files are written to `/audio-spy/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops. `unsynced-*` files count as the oldest, since their real time is unknown.
 
-Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark). If the file can't be parsed, it's kept as `config.json.bad` and defaults are used, so check the password after hand-editing it.
+Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, `sessionSecret` (random, see [Web interface](#web-interface)), and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark). If the file can't be parsed, it's kept as `config.json.bad` and defaults are used, so check the password after hand-editing it.
 
 ## Web interface
 
-Password-protected (basic HTTP auth) page served over the local WiFi network at the device's IP (press **I** on the device to see it). User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
+Password-protected (basic HTTP auth) page served over the local WiFi network at **http://audio-spy.local** (mDNS), or at the device's IP (press **I** on the device to see it; some Android browsers don't resolve `.local` names). User `admin`, password from `webPassword` in `config.json` (default `cardputer`).
+
+After logging in once, the browser keeps a login cookie for a year and isn't asked again, which also keeps the iPhone home-screen app logged in (iOS forgets basic auth whenever it restarts the app). The cookie is derived from `webPassword` and a random `sessionSecret` in `config.json`: changing either one logs every browser out.
 
 **Change the default password** before using it on a shared network: edit
 `webPassword` in `/audio-spy/config.json` on the SD card and reboot. The page
@@ -127,15 +129,15 @@ delete recordings.
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live, and the Resume button is highlighted in yellow like an active Bypass
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
-- Settings panel: IP address, firmware version, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
+- Settings panel: address (`audio-spy.local` and IP), firmware version, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
 
-Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Spy" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
+Works as an iPhone home screen app: in Safari, open `http://audio-spy.local`, then Share → Add to Home Screen (added via the name, it keeps working if the router hands out a different IP). It runs full screen as "Audio Spy" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
 ## On-device display
 
 Live status screen by default: recording state, a fast dB level meter with peak hold and threshold marker, the loudest second of the current chunk, the threshold, and free SD space. The dB number is averaged over 250 ms so it stays readable. Shows boot progress and the firmware version while starting (about 20 seconds, mostly WiFi and NTP). If WiFi fails, it's about 25 seconds: the 15 second connection timeout plus 10 seconds to press **W** (the NTP wait is skipped offline, see [WiFi setup](#wifi-setup)). Goes dark when stealth mode is enabled.
 
-Press **I** to show the device's IP address (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
+Press **I** to show the device's IP address and `audio-spy.local` (where the web interface is served) for 5 seconds, then the status screen returns. Does nothing while stealth mode is on.
 
 ## Status
 

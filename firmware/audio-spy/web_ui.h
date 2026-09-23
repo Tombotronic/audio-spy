@@ -209,8 +209,8 @@ const char WEB_INDEX_HTML[] PROGMEM = R"rawliteral(
         <button id="settingsClose" aria-label="Close">✕</button>
       </div>
       <div class="setting">
-        <div><strong>IP address</strong></div>
-        <span id="ip" class="muted"></span>
+        <div><strong>Address</strong></div>
+        <span class="muted" style="text-align: right"><span id="hostname"></span><br><span id="ip"></span></span>
       </div>
       <div class="setting">
         <div><strong>Firmware</strong></div>
@@ -339,6 +339,7 @@ async function refreshStatus() {
   level.classList.toggle('above', s.levelRms >= threshold);
   document.getElementById('thrMark').style.left = meterPct(threshold) + '%';
   document.getElementById('ip').textContent = s.ip || '';
+  document.getElementById('hostname').textContent = s.ip ? s.hostname || '' : '';
   document.getElementById('version').textContent = s.version ? 'v' + s.version : '';
   document.getElementById('ssid').textContent = s.ssid || '';
   showStorage(s.freeBytes, s.totalBytes);

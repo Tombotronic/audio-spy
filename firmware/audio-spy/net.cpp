@@ -1,5 +1,6 @@
 #include "net.h"
 
+#include <ESPmDNS.h>
 #include <WiFi.h>
 #include <time.h>
 
@@ -29,6 +30,9 @@ static bool tryConnect(const String& ssid, const String& pass, uint32_t timeoutM
 }
 
 bool netConnectWifi(uint32_t timeoutMs) {
+    // Before the WiFi stack starts (the setup scan starts it too), or DHCP
+    // doesn't send it.
+    WiFi.setHostname(HOSTNAME);
     String ssid, pass;
     bool haveCreds = wifiLoadCreds(ssid, pass) || wifiPromptCreds(ssid, pass);
 
@@ -40,6 +44,17 @@ bool netConnectWifi(uint32_t timeoutMs) {
         connected = tryConnect(ssid, pass, timeoutMs);
     }
     netRefreshState();
+
+    // Started once; it follows reconnects and IP changes by itself. Without
+    // saved WiFi the network stack never starts, so there's nothing to do.
+    if (haveCreds) {
+        if (MDNS.begin(HOSTNAME)) {
+            MDNS.addService("http", "tcp", 80);
+            Serial.println("[net] mDNS: http://" HOSTNAME ".local");
+        } else {
+            Serial.println("[net] mDNS failed to start");
+        }
+    }
 
     if (connected) {
         Serial.printf("[net] WiFi connected, IP: %s\n", WiFi.localIP().toString().c_str());

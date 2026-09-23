@@ -6,6 +6,7 @@
 #include <WebServer.h>
 #include <WiFi.h>
 #include <math.h>
+#include <mbedtls/md.h>
 
 #include "app_state.h"
 #include "config.h"
@@ -20,11 +21,53 @@ extern Config g_config;
 
 static WebServer server(80);
 
+// Login cookie. An iPhone home-screen app forgets Basic Auth credentials
+// whenever iOS restarts it, but keeps persistent cookies. So a successful
+// Basic Auth login also sets this cookie, and while it's there the password
+// isn't asked for again. Its value is HMAC-SHA256(sessionSecret,
+// webPassword): nothing to store per login, it survives reboots, and
+// changing either value logs every browser out. Lax (not Strict) so it's
+// sent when the home-screen app launches; cross-site POSTs don't get it,
+// and they fail the CSRF header check anyway.
+static const char* SESSION_COOKIE = "audio_spy_session";
+static constexpr uint32_t SESSION_MAX_AGE_S = 365UL * 24 * 3600;
+static String s_sessionToken;
+
+static String computeSessionToken() {
+    uint8_t mac[32];
+    const String& key = g_config.sessionSecret;
+    const String& msg = g_config.webPassword;
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), (const uint8_t*)key.c_str(), key.length(),
+                    (const uint8_t*)msg.c_str(), msg.length(), mac);
+    char hex[sizeof(mac) * 2 + 1];
+    for (size_t i = 0; i < sizeof(mac); i++) sprintf(hex + i * 2, "%02x", mac[i]);
+    return String(hex);
+}
+
+static bool hasSessionCookie() {
+    String cookies = server.header("Cookie");
+    String prefix = String(SESSION_COOKIE) + "=";
+    int start = cookies.indexOf(prefix);
+    // must be the cookie's own name, not the tail of another one
+    while (start > 0 && cookies[start - 1] != ' ' && cookies[start - 1] != ';') {
+        start = cookies.indexOf(prefix, start + 1);
+    }
+    if (start < 0) return false;
+    start += prefix.length();
+    int end = cookies.indexOf(';', start);
+    String value = cookies.substring(start, end < 0 ? cookies.length() : end);
+    value.trim();
+    return value == s_sessionToken;
+}
+
 static bool requireAuth() {
+    if (hasSessionCookie()) return true;
     if (!server.authenticate("admin", g_config.webPassword.c_str())) {
         server.requestAuthentication();
         return false;
     }
+    server.sendHeader("Set-Cookie", String(SESSION_COOKIE) + "=" + s_sessionToken + "; Max-Age=" +
+                                        SESSION_MAX_AGE_S + "; Path=/; HttpOnly; SameSite=Lax");
     return true;
 }
 
@@ -252,6 +295,7 @@ static void handleStatus() {
         doc["freeBytes"] = g_state.freeBytes;
         doc["totalBytes"] = g_state.totalBytes;
         doc["ip"] = g_state.ipAddress;
+        doc["hostname"] = HOSTNAME ".local";
         doc["ssid"] = WiFi.SSID();
         doc["wifiConnected"] = g_state.wifiConnected;
         doc["timeSynced"] = g_state.timeSynced;
@@ -350,8 +394,9 @@ void webServerStart() {
     server.on("/resume", HTTP_POST, []() { setPaused(false); });
     server.on("/bypass", HTTP_POST, handleSetBypass);
     server.on("/forgetwifi", HTTP_POST, handleForgetWifi);
-    const char* headers[] = {CSRF_HEADER};
-    server.collectHeaders(headers, 1);
+    const char* headers[] = {CSRF_HEADER, "Cookie"};
+    server.collectHeaders(headers, 2);
+    s_sessionToken = computeSessionToken();
     server.begin();
     Serial.println("[web] server started on port 80");
 }

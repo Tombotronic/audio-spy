@@ -3,6 +3,7 @@
 #include <M5Cardputer.h>
 
 #include "app_state.h"
+#include "config.h"
 #include "storage.h"
 #include "version.h"
 
@@ -66,6 +67,11 @@ static void drawIp() {
     canvas.setTextSize(2);
     canvas.setTextColor(WHITE, BLACK);
     canvas.drawString(ip[0] ? ip : "not connected", canvas.width() / 2, canvas.height() / 2);
+    if (ip[0]) {
+        canvas.setTextSize(1);
+        canvas.setTextColor(LIGHTGREY, BLACK);
+        canvas.drawString(HOSTNAME ".local", canvas.width() / 2, canvas.height() / 2 + 24);
+    }
     canvas.setTextDatum(top_left);
     canvas.pushSprite(0, 0);
 }
