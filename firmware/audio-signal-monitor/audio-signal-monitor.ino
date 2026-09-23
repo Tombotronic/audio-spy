@@ -30,9 +30,9 @@ void setup() {
     }
 
     wavRecoverInterruptedRun();
+    // Stealth mode carries over from the last session; boot progress (and
+    // WiFi setup) still show, the screen goes dark once the loop starts.
     g_config = configLoad();
-    // Always boot with the screen on; stealth is a per-session choice.
-    g_config.stealthMode = false;
     {
         AppStateLock lock;
         g_state.thresholdRms = g_config.threshold;

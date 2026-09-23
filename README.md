@@ -68,7 +68,7 @@ recording in progress is repaired on boot, the same as after a power cut.
 
 Files are written to `/audio-signal-monitor/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops.
 
-Settings live in `/audio-signal-monitor/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (ignored at boot; the device always starts with the screen on).
+Settings live in `/audio-signal-monitor/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark).
 
 ## Web interface
 
@@ -78,7 +78,7 @@ Password-protected (basic HTTP auth) page served over the local WiFi network at 
 - Threshold slider in 1 dB steps under a live dB level meter
 - Pause / resume recording (takes effect immediately; audio from before and after a pause never ends up in the same file). While paused nothing is recorded, but the level meters stay live
 - "Bypass Threshold" switch: while on, everything is recorded regardless of the threshold (off again after a reboot). Greyed out while paused
-- Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; off again after a reboot) and "delete all recordings" with confirmation
+- Settings panel: IP address, storage (bar showing recordings vs. other used space, and what's free), appearance (System / Light / Dark), stealth mode (blanks the on-device screen; stays on after a reboot) and "delete all recordings" with confirmation
 
 Works as an iPhone home screen app: in Safari, Share → Add to Home Screen. It runs full screen as "Audio Monitor" with its own icon (`/icon.png` and `/manifest.json` are served without login so iOS can fetch them).
 
