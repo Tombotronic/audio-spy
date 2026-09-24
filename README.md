@@ -114,7 +114,7 @@ recording in progress is repaired on boot, the same as after a power cut.
 
 Files are written to `/audio-spy/` on the SD card, named after the NTP-synced time their audio starts (e.g. `2026-09-22_14-05-30.wav`). Before the first NTP sync, files are named `unsynced-000000.wav` etc. When the card fills up, the oldest kept files are automatically deleted to make room — recording never stops. `unsynced-*` files count as the oldest, since their real time is unknown.
 
-Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, `sessionKey` (random, generated once WiFi is up, see [Web interface](#web-interface)), and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark). If the file can't be parsed, it's kept as `config.json.bad` and defaults are used, so check the password after hand-editing it.
+Settings live in `/audio-spy/config.json` on the same card (created with defaults on first boot): `threshold` (linear RMS, 0–1), `webPassword`, `sessionKey` (random, generated once WiFi is up, see [Web interface](#web-interface)), and `stealthMode` (kept across reboots; boot progress still shows, then the screen goes dark; reset to off when no WiFi credentials are saved, so first-time setup is always visible). If the file can't be parsed, it's kept as `config.json.bad` and defaults are used, so check the password after hand-editing it.
 
 ## Web interface
 

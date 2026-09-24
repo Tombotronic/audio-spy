@@ -10,6 +10,7 @@
 #include "version.h"
 #include "wav_writer.h"
 #include "web_server.h"
+#include "wifi_setup.h"
 
 Config g_config;
 
@@ -34,7 +35,15 @@ void setup() {
     wavRecoverInterruptedRun();
     // Stealth mode carries over from the last session; boot progress (and
     // WiFi setup) still show, the screen goes dark once the loop starts.
+    // No saved WiFi credentials counts as a first-time setup: stealth is
+    // reset so the device comes up visible.
     g_config = configLoad();
+    String ssid, pass;
+    if (g_config.stealthMode && !wifiLoadCreds(ssid, pass)) {
+        g_config.stealthMode = false;
+        configSave(g_config);
+        Serial.println("[boot] no WiFi credentials, stealth mode reset");
+    }
     {
         AppStateLock lock;
         g_state.thresholdRms = g_config.threshold;

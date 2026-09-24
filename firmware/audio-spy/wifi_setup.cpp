@@ -163,6 +163,12 @@ bool wifiPromptCreds(String& ssid, String& pass) {
     }
     saveCreds(ssid, pass);
     Serial.printf("[wifi] saved credentials for SSID \"%s\"\n", ssid.c_str());
+    // Connecting takes up to the connect timeout; without this the password
+    // prompt stays up and looks like Enter wasn't taken.
+    clearScreen();
+    M5Cardputer.Display.println("Connecting to");
+    M5Cardputer.Display.println(ssid);
+    M5Cardputer.Display.println("...");
     return true;
 }
 

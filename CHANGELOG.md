@@ -3,6 +3,11 @@
 Each release's section is copied into its GitHub release notes by
 `.github/workflows/release.yml`; a tag without a section here isn't published.
 
+## v1.0.0 (2026-09-24)
+
+- **Fixed:** first-time WiFi setup is always visible. If no WiFi is saved (first boot, or after "Forget WiFi"), stealth mode is switched off so the screen stays on.
+- **Fixed:** after entering the WiFi password, the screen shows "Connecting to …" right away instead of keeping the password prompt up while it connects.
+
 ## v0.10.0 (2026-09-23)
 
 - **New:** the web UI is reachable at **http://audio-spy.local**, so you don't need the IP address anymore. The name is shown in the settings and on the device's **I** screen.
